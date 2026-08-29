@@ -30,10 +30,10 @@ Each Learn unit runs the same way:
 
 ### Conventions
 
-- **Mental models** → `docs/mental-models/NN-name.md` (numbered in curriculum order)
-- **Decisions** → `docs/decisions/ADR-NNN-title.md` (context, options, choice, consequences)
-- **Experiments** → `docs/experiments/EXP-NNN-title.md` (hypothesis, variable, metric, result, decision)
-- **Spikes** → `spikes/` — disposable, never imported by `src/`
+- **Mental models** → `docs/mental-models/NN-name.md` (numbered in curriculum order; **untracked** — local working notes, kept out of the public tree)
+- **Decisions** → `docs/decisions/ADR-NNN-title.md` (context, options, choice, consequences; tracked — the public record)
+- **Experiments** → `docs/experiments/EXP-NNN-title.md` (hypothesis, variable, metric, result, decision; tracked — results are summarized here, raw run data stays local)
+- **Spikes** → `spikes/` — disposable, never imported by `src/`; **untracked**, code and results both
 - **Real code** → `src/soma/`, tested, typed, ruff-clean
 - Commits: `learn(Lx):`, `build(Px):`, `exp(EXP-NNN):`, `adr(NNN):`, `docs:`
 
