@@ -2,7 +2,8 @@
 
 **Status:** living document · started 2026-08-28 · Phase P0 complete
 **Companion:** [README.md](README.md) for the what and why. This file is the how.
-**Reference hardware:** Apple M3 Max, 96 GB unified memory. Cost target: replace a $200/mo subscription with < $100/mo.
+**Reference hardware:** Apple M3 Max, 96 GB unified memory.
+**Cost policy:** choose the appropriate model for each task — never downgrade to hit a number. Then *measure*: the ledger reports whether monthly spend lands under the $200/mo subscription this replaces. Cost is observed, not optimized-for.
 
 ---
 
@@ -68,7 +69,7 @@ Each Learn unit runs the same way:
 2. **Org run.** One org template executes a two-team hierarchical job unattended, in Docker, to its `done_when`, with zero human interventions.
 3. **Coordination.** Two agents complete a handoff purely via the shared WAL + Beads — no shared prompt, no shared context window.
 4. **Memory lift.** For one archetype and one task class repeated 5+ times, tokens-to-done or interventions trend measurably down.
-5. **Cost.** Two consecutive weeks under $25/week at normal usage, verified from the `usage_id` ledger.
+5. **Cost.** With models chosen purely for task fit, a measured 4-week run-rate under $200, verified from the `usage_id` ledger.
 6. **ToM.** Blind A/B on 20 real conversation turns: ToM-composed replies preferred ≥ 60%.
 7. **Instrumented.** Every subsystem above ships with at least one EXP one-pager showing its measured effect.
 
@@ -148,9 +149,12 @@ README with the naming thesis, MIT license, this plan, doc templates, public Git
 ### P1 — Local substrate (needs L1)
 - [x] vllm-mlx 0.4.1 serving Qwen3-Coder-30B-A3B-4bit with continuous batching — **parser flags mandatory**: `--enable-auto-tool-choice --tool-call-parser qwen3_coder` (S1 found tool calls silently degrading to XML-in-text without them)
 - [x] Tool-call soak (S1): **PASS** — 29/29 recognized + well-formed, 6/6 tasks correct, ~65 tok/s decode
-- [x] Throughput measured (S7): aggregate 41.8/57.4/51.0 tok/s at concurrency 1/4/8 (cap in-flight LOCAL at ~4–6); prefill ~381 tok/s (26K-token probe, 68s — chunk big inputs); prefix cache ~8× on warm prefixes; 64K-context point deferred to a bench task
+- [x] Throughput measured (S7):
+  - aggregate 41.8 / 57.4 / 51.0 tok/s at concurrency 1 / 4 / 8 — cap in-flight LOCAL at ~4–6
+  - prefill ~381 tok/s (26K-token probe took 68s) — chunk big inputs
+  - prefix cache ~8× on warm prefixes; 64K-context point deferred to a bench task
 - [x] `iogpu.wired_limit_mb`: not raised — 17 GB model in 96 GB needs no headroom change; revisit only if we co-host a second model
-- [ ] Baseline spend measured: a normal day's work through OpenRouter, token distribution captured
+- [ ] Reference point captured (EXP-001): one normal day's work through OpenRouter — what the current workflow costs at raw API prices, as the comparison line for the $200/mo verdict
 - [x] ADR-005: local-provider abstraction; Apple-only v0 via packaging markers; cloud-only fallback off-Mac
 - [ ] This setup codified as `soma local up` + `soma doctor --local` in P2 — the S1 spike graduates into doctor, so every installer runs the same verification we did
 - **Exit:** local endpoint stable under 4+ concurrent streams; baseline cost report exists; EXP-001 (baseline) written
@@ -375,7 +379,7 @@ LEAD   = LLM(model="openrouter/<frontier>",       usage_id="lead")      # orches
 | Domain-agent execution (most archetypes) | WORKER |
 | Condensing, pre-context extraction, classification, routing, sentinel checks, memory extraction/reflection, InterlocutorModel updates, commit messages | LOCAL |
 
-Rules: every LLM instance gets a distinct `usage_id` (`agent:<name>`, `condenser`, `sentinel`, `tom:router`…). Budget breakers per §5.5. Weekly review demotes/promotes archetypes between tiers based on the ledger — the data decides, per agent, after a week of evidence.
+Rules: every LLM instance gets a distinct `usage_id` (`agent:<name>`, `condenser`, `sentinel`, `tom:router`…). Budget breakers per §5.5 exist to catch runaway loops, not to squeeze spend. Tier assignment follows task fit; the weekly ledger review changes an assignment only where a different tier shows quality parity — or where quality demands an upgrade.
 
 Known cost traps carried forward: subagent-heavy workflows can run ~7× tokens (measure ours in P4); condensation invalidates prompt-cache prefixes (cheap on LOCAL, watch it on LEAD); pin LiteLLM far from the known-malicious 1.82.7/1.82.8 releases.
 
