@@ -52,6 +52,7 @@ Each Learn unit runs the same way:
 - **G6 — Hybrid routing.** LOCAL (M3 Max) / WORKER (cheap cloud) / LEAD (frontier) tiers, bound per agent and per subsystem, with per-`usage_id` cost attribution.
 - **G7 — Self-measurement.** The harness instruments itself: run ledger, replayable logs, shadow-mode rollouts, benchmark suite. We learn where it's weak from data, not vibes.
 - **G8 — Safety.** Sandboxed unattended runs, sentinels with kill authority, budget circuit breakers, audited skills.
+- **G9 — A framework, not an app.** The harness runs as a commander: start it, converse with the main loop, and it delegates to teams under the hood. Anyone can plug in custom archetypes (cell types), skills, and tools as data — no harness-code changes. The archetype format is the plugin surface.
 
 ### Non-goals (v0.x)
 
@@ -265,6 +266,25 @@ Two layers with different subjects, deliberately not merged:
 - **Spam guards:** per-agent publish rate limits; broadcasts to `org` require lead role; digests are summarized by LOCAL when > N events.
 
 **Tests that matter:** the no-shared-context handoff (criterion 3); interleaved-writer chaos test (S5); a "gossip storm" test proving rate limits hold.
+
+#### The cell/activity model and the log tree (decided 2026-08-29, L2 session)
+
+Terminology, locked. An **archetype** is the role definition. A **cell** is a living instance of an archetype in a run — identity, broader goal, memory namespace. An **activity** is one engagement a cell undertakes, each with its own log: a **task** (solo work) or a **dialogue** (back-and-forth with another cell). "Agent" and "Conversation" refer only to SDK objects.
+
+Two kinds of logs, never conflated. Kind 1: the SDK's private event log — automatic, one per SDK Conversation, the engine's internal record of one task. Kind 2: the soma WALs — one for the **main loop**, one per **team**, one per **dialogue**. The SDK has no concept of Kind 2; the harness owns them all. Physically, all Kind-2 WALs of a run live in one SQLite store as logical logs (`scope` column + per-cell cursors).
+
+Layering: the harness wraps the SDK, never the reverse. A task activity runs an SDK Conversation as its engine, with the Agent config minted per activity from the archetype (task overlay, or dialogue overlay + ToM block). Cells, teams, and dialogues are invisible to the SDK.
+
+Dialogues (v0): harness-composed turns, no SDK engine — dialogues are talk, not tool use. Lifecycle:
+
+1. A cell calls the `start_dialogue` tool from inside its task.
+2. The harness creates `dialogue:<id>`, parks both cells' beads as blocked-on the dialogue, and sets their status to `in_dialogue`.
+3. The scheduler stops stepping their task engines. Pause means: not being stepped.
+4. The harness watches the dialogue WAL and composes each reply turn from: archetype + conversational overlay + ToM block + transcript + a broader-goal reminder.
+5. A terminal condition ends it: an explicit RESOLVED move, the turn cap, or the LOCAL circularity judge.
+6. LOCAL writes a summary. Beads unblock. The summary — not the transcript — is injected into both task engines.
+
+Memory consequence: a cell's episodic reflection spans all its activity logs, tasks and dialogues alike — the episode unit is the cell, not a conversation.
 
 ### 5.3 Theory-of-mind conversational layer
 
@@ -493,6 +513,7 @@ CREATE TABLE events (
   id       TEXT PRIMARY KEY,   -- ULID: sortable, unique
   ts       TEXT NOT NULL,
   run_id   TEXT NOT NULL,
+  scope    TEXT NOT NULL,      -- which logical WAL: 'main' | 'team:<name>' | 'dialogue:<id>'
   team_id  TEXT,
   sender   TEXT NOT NULL,      -- "archetype#instance", "orchestrator", "sentinel"
   kind     TEXT NOT NULL,
