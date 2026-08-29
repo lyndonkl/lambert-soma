@@ -1,0 +1,8 @@
+Summarize in 3 bullets: The condenser replaces old events with an LLM-generated summary stored as a CondensationEvent, preserving the full log. Agents apply condensations as a view, removing forgotten events and inserting summaries before each LLM call. This reduces cost while keeping the event log replayable and auditable for later analysis.
+Classify this task as SOLO or ORG and answer with one word: "Rename a variable across one file and update its two call sites."
+Classify this task as SOLO or ORG and answer with one word: "Migrate the billing service to the new API, update all consumers, add integration tests, and write a rollout doc."
+Extract every fact worth remembering as a JSON list of strings: "The repo uses pnpm workspaces. CI runs on push to main only. The auth module reads JWT config from settings.py, not env vars. Tests monkeypatch the system clock."
+You are monitoring an AI agent for unproductive loops. Recent actions: read_file(a.py), read_file(a.py), read_file(a.py), read_file(a.py). Respond ONLY with JSON: {"stuck": bool, "confidence": number, "reason": string}
+Write a one-line conventional commit message for: added retry logic with exponential backoff to the WAL writer to survive SQLITE_BUSY under concurrent agents.
+Summarize in 2 sentences what this function does: def merge(a, b): out = dict(a); [out.__setitem__(k, merge(out[k], v) if isinstance(out.get(k), dict) and isinstance(v, dict) else v) for k, v in b.items()]; return out
+Given goals=[ship dark mode], knows=[React, CSS vars], gaps=[media query theming], update this interlocutor model with: "user asked how prefers-color-scheme interacts with a manual toggle". Respond as JSON with keys goals, knows, gaps.

@@ -75,9 +75,11 @@ TOOLS = [
 
 REQUIRED = {"read_file": ["path"], "run_shell": ["command"], "report_done": ["answer"]}
 
-SYSTEM = ("You are a coding agent. Use the provided tools to inspect the "
-          "project. Call one tool at a time. When you know the answer, call "
-          "report_done. Keep any prose brief.")
+SYSTEM = ("You are a coding agent. The project lives at /project. The shell "
+          "supports exactly two commands: `ls <dir>` and `cat <file>` — no "
+          "flags, no grep, no find. Prefer read_file for file contents. Call "
+          "one tool at a time. When you know the answer, call report_done. "
+          "Keep any prose brief.")
 
 
 def execute(name: str, args: dict) -> str:
@@ -86,9 +88,11 @@ def execute(name: str, args: dict) -> str:
     if name == "run_shell":
         cmd = args["command"].strip()
         if cmd.startswith("ls"):
-            target = (cmd.split(None, 1)[1:] or ["/project"])[0].rstrip("/")
-            hits = sorted({p[len(target) + 1:].split("/")[0]
-                           for p in FAKE_FS if p.startswith(target + "/")})
+            args = [p for p in cmd.split()[1:] if not p.startswith("-")]
+            target = (args or ["/project"])[0].rstrip("/")
+            base = "" if target in ("", "/") else target
+            hits = sorted({p[len(base) + 1:].split("/")[0]
+                           for p in FAKE_FS if p.startswith(base + "/")})
             return "\n".join(hits) if hits else f"ls: {target}: no such directory"
         if cmd.startswith("cat "):
             return FAKE_FS.get(cmd[4:].strip(), f"cat: {cmd[4:].strip()}: no such file")
@@ -122,8 +126,8 @@ def run_episode(base_url: str, model: str, task: str, truth: str,
                 max_turns: int, stats: dict) -> dict:
     messages = [{"role": "system", "content": SYSTEM},
                 {"role": "user", "content": task}]
-    ep = {"turns": 0, "tool_calls": 0, "malformed": 0, "text_only": 0,
-          "nudges": 0, "done": False, "correct": False,
+    ep = {"turns": 0, "tool_calls": 0, "malformed": 0, "unparsed_xml": 0,
+          "text_only": 0, "nudges": 0, "done": False, "correct": False,
           "latency_s": [], "completion_tokens": 0}
 
     for _ in range(max_turns):
@@ -143,6 +147,17 @@ def run_episode(base_url: str, model: str, task: str, truth: str,
         messages.append(msg)
 
         if not calls:
+            text = msg.get("content") or ""
+            if "<function=" in text or "<tool_call>" in text:
+                # the model *meant* to call a tool; the server failed to parse
+                # it into tool_calls — the failure S1 exists to catch
+                ep["unparsed_xml"] += 1
+                stats["malformed_by_type"]["unparsed_xml"] = \
+                    stats["malformed_by_type"].get("unparsed_xml", 0) + 1
+                messages.append({"role": "user", "content":
+                                 "Your tool call was not executed: it arrived as text, "
+                                 "not via the tools API. Retry using the tools API."})
+                continue
             ep["text_only"] += 1
             if ep["nudges"] < 2:
                 ep["nudges"] += 1
@@ -162,6 +177,7 @@ def run_episode(base_url: str, model: str, task: str, truth: str,
                 problem = "json_error"
             if problem is None and name not in REQUIRED:
                 problem = "unknown_tool"
+                stats.setdefault("unknown_names", []).append(name)
             if problem is None and any(k not in args for k in REQUIRED[name]):
                 problem = "missing_param"
 
@@ -180,6 +196,12 @@ def run_episode(base_url: str, model: str, task: str, truth: str,
                              "content": result})
         if ep["done"]:
             break
+
+    if not ep["done"]:  # did it state the answer in prose instead?
+        last_text = next((m.get("content") or "" for m in reversed(messages)
+                          if isinstance(m, dict) and m.get("role") == "assistant"), "")
+        ep["answered_in_text"] = truth.lower() in last_text.lower()
+    ep["_transcript"] = messages
     return ep
 
 
@@ -216,6 +238,7 @@ def main() -> int:
 
     calls = sum(e["tool_calls"] for e in episodes)
     malformed = sum(e["malformed"] for e in episodes)
+    unparsed = sum(e["unparsed_xml"] for e in episodes)
     tokens = sum(e["completion_tokens"] for e in episodes)
     gen_s = sum(sum(e["latency_s"]) for e in episodes) or 1e-9
     summary = {
@@ -223,19 +246,31 @@ def main() -> int:
         "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "episodes": len(episodes), "tool_calls": calls, "malformed": malformed,
         "malformed_by_type": stats["malformed_by_type"],
+        "unparsed_xml": unparsed,
+        "recognition_rate": round(calls / (calls + unparsed), 4) if calls + unparsed else None,
         "malformation_rate": round(malformed / calls, 4) if calls else None,
         "done_rate": sum(e["done"] for e in episodes) / len(episodes),
         "correct_rate": sum(e["correct"] for e in episodes) / len(episodes),
         "text_only_turns": sum(e["text_only"] for e in episodes),
         "approx_tok_s": round(tokens / gen_s, 1),
-        "verdict": "PASS" if calls >= 10 and malformed == 0 else "FAIL",
+        "verdict": "PASS" if calls >= 10 and malformed == 0 and unparsed == 0
+                   else "FAIL",
     }
     print("\n" + json.dumps(summary, indent=2))
+    if stats.get("unknown_names"):
+        summary["unknown_tool_names"] = stats["unknown_names"]
+        print(f"invented tool names: {stats['unknown_names']}")
     with open(a.out, "a") as f:
         for e in episodes:
-            f.write(json.dumps({"spike": "S1-episode", **e}) + "\n")
+            f.write(json.dumps({"spike": "S1-episode",
+                                **{k: v for k, v in e.items() if k != "_transcript"}}) + "\n")
         f.write(json.dumps(summary) + "\n")
-    print(f"\nappended to {a.out}")
+    tpath = a.out.replace(".jsonl", "_transcripts.jsonl")
+    with open(tpath, "a") as f:
+        for i, e in enumerate(episodes):
+            f.write(json.dumps({"ts": summary["ts"], "episode": i + 1,
+                                "messages": e["_transcript"]}) + "\n")
+    print(f"\nappended to {a.out}; transcripts in {tpath}")
     return 0 if summary["verdict"] == "PASS" else 1
 
 

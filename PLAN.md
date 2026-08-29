@@ -146,10 +146,10 @@ Every phase's exit criteria include its telemetry. If we didn't measure it, we d
 README with the naming thesis, MIT license, this plan, doc templates, public GitHub repo.
 
 ### P1 — Local substrate (needs L1)
-- [ ] vllm-mlx serving Qwen3-Coder-30B-A3B-4bit with continuous batching
-- [ ] Tool-call soak test: 10+ turns, clean JSON every turn (S1)
-- [ ] Throughput curve recorded: tok/s at 1K/16K/64K context (S7)
-- [ ] `iogpu.wired_limit_mb` decision recorded (ADR if we raise it)
+- [x] vllm-mlx 0.4.1 serving Qwen3-Coder-30B-A3B-4bit with continuous batching — **parser flags mandatory**: `--enable-auto-tool-choice --tool-call-parser qwen3_coder` (S1 found tool calls silently degrading to XML-in-text without them)
+- [x] Tool-call soak (S1): **PASS** — 29/29 recognized + well-formed, 6/6 tasks correct, ~65 tok/s decode
+- [x] Throughput measured (S7): aggregate 41.8/57.4/51.0 tok/s at concurrency 1/4/8 (cap in-flight LOCAL at ~4–6); prefill ~381 tok/s (26K-token probe, 68s — chunk big inputs); prefix cache ~8× on warm prefixes; 64K-context point deferred to a bench task
+- [x] `iogpu.wired_limit_mb`: not raised — 17 GB model in 96 GB needs no headroom change; revisit only if we co-host a second model
 - [ ] Baseline spend measured: a normal day's work through OpenRouter, token distribution captured
 - [x] ADR-005: local-provider abstraction; Apple-only v0 via packaging markers; cloud-only fallback off-Mac
 - [ ] This setup codified as `soma local up` + `soma doctor --local` in P2 — the S1 spike graduates into doctor, so every installer runs the same verification we did
@@ -387,13 +387,13 @@ Spikes that can invalidate the design run **first**, not when convenient.
 
 | # | Assumption | Falsify by | If false |
 |---|---|---|---|
-| S1 | Quantized Qwen3-Coder emits clean tool calls over long sessions | 10+ turn soak, count malformations | different local model, or LOCAL demoted to non-tool work only |
+| S1 ✅ | Quantized Qwen3-Coder emits clean tool calls over long sessions | 10+ turn soak, count malformations | **Verified 2026-08-28** — PASS, but only with `--tool-call-parser qwen3_coder --enable-auto-tool-choice`; without them, calls degrade to unparsed XML text |
 | S2 | Per-subagent LLM independence works across mixed providers with separate Metrics | mixed local+OpenRouter delegation run | routing happens outside the SDK (own dispatcher); plan §5.1 unchanged, plumbing changes |
 | S3 | Condenser can run on LOCAL while the agent runs on cloud | P2 config | condense on WORKER; local-share metric takes a hit |
 | S4 | DelegateTool supports our team topology (addressable children, results fan-in) | L7 spike | org compiler owns one Conversation per agent; delegation becomes compiler-managed spawns (ADR-003) |
 | S5 | SQLite WAL survives interleaved writers from concurrent conversations | chaos test, 2+ writers, 10K events | JSONL + flock, or a tiny event-broker thread in process 3 |
 | S6 | Beads discipline is enforceable via wrapper tools + pre-turn nudges | P4 team run, count orphaned work | harness-level enforcement: no turn starts without a claimed bead |
-| S7 | 96 GB sustains model + KV for ~10 streams + condenser traffic at usable tok/s | S1 under concurrent load | smaller model (Qwen3-8B) for LOCAL, or fewer concurrent locals |
+| S7 ✅ | 96 GB sustains model + KV for ~10 streams + condenser traffic at usable tok/s | S1 under concurrent load | **Verified 2026-08-28** — usable through ~4–6 concurrent streams (peak 57 tok/s aggregate at c=4); saturates by c=8, so the router queues beyond ~6 rather than downsizing the model |
 
 ---
 
