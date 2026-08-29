@@ -30,10 +30,10 @@ Each Learn unit runs the same way:
 
 ### Conventions
 
-- **Mental models** → `docs/mental-models/NN-name.md` (numbered in curriculum order)
-- **Decisions** → `docs/decisions/ADR-NNN-title.md` (context, options, choice, consequences)
-- **Experiments** → `docs/experiments/EXP-NNN-title.md` (hypothesis, variable, metric, result, decision)
-- **Spikes** → `spikes/` — disposable, never imported by `src/`
+- **Mental models** → `docs/mental-models/NN-name.md` (numbered in curriculum order; **untracked** — local working notes, kept out of the public tree)
+- **Decisions** → `docs/decisions/ADR-NNN-title.md` (context, options, choice, consequences; tracked — the public record)
+- **Experiments** → `docs/experiments/EXP-NNN-title.md` (hypothesis, variable, metric, result, decision; tracked — results are summarized here, raw run data stays local)
+- **Spikes** → `spikes/` — disposable, never imported by `src/`; **untracked**, code and results both
 - **Real code** → `src/soma/`, tested, typed, ruff-clean
 - Commits: `learn(Lx):`, `build(Px):`, `exp(EXP-NNN):`, `adr(NNN):`, `docs:`
 
@@ -156,7 +156,7 @@ README with the naming thesis, MIT license, this plan, doc templates, public Git
 - **Exit:** local endpoint stable under 4+ concurrent streams; baseline cost report exists; EXP-001 (baseline) written
 
 ### P2 — The spine (needs L2, L4, L6)
-- [ ] `uv`-managed package; `src/soma` layout; ruff + pytest wired
+- [x] `uv`-managed package; `src/soma` layout; ruff + pytest wired — pulled forward into the packaging-bootstrap PR, with `soma doctor` and `soma local up` (v0 of ADR-005's provider chain)
 - [ ] Single agent on OpenHands SDK, LEAD tier, default tools
 - [ ] Condenser on LOCAL (`max_size=80, keep_first=4`), **verified firing** (never assume the default)
 - [ ] Telemetry v0: run ledger (`~/.soma/telemetry.db`) — one row per run: config hash, task fingerprint, outcome, tokens/cost per `usage_id`, duration

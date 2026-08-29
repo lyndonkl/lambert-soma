@@ -20,6 +20,10 @@ htmlcov/
 # macOS
 .DS_Store
 
+# Working notes — local by design; the public record is ADRs + EXPs (2026-08-29)
+docs/mental-models/
+spikes/
+
 # Runtime state — agent runs are data, not source
 runs/
 logs/

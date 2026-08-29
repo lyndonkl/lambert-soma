@@ -11,6 +11,20 @@ Lambert-Soma is an open-source, **local + cloud hybrid harness** for running soc
 
 ---
 
+## Quickstart (pre-alpha)
+
+Requires [uv](https://docs.astral.sh/uv/). Works on any OS; the local tier lights up only on Apple Silicon (see below).
+
+```bash
+git clone https://github.com/lyndonkl/lambert-soma && cd lambert-soma
+uv sync --extra local-mlx    # on non-Apple hardware the extra is a quiet no-op
+uv run soma doctor           # what can this box do?
+uv run soma local up         # Apple Silicon: start the local model server
+                             # (first run downloads ~17 GB into the HF cache)
+```
+
+`soma doctor` is the contract: it tells you which tiers your machine has — local + cloud, cloud-only, or local-only — and verifies the local server actually answers with a real completion. The serve flags baked into `soma local up` are load-bearing: without the right tool-call parser, a healthy model looks broken. Cross-platform stance: install never breaks anywhere; capability differs by machine, and doctor reports it (`docs/decisions/ADR-005`).
+
 ## Why "Lambert-Soma"?
 
 Two books name this project: Siddhartha Mukherjee's *The Song of the Cell* and Greg Egan's *Permutation City*.

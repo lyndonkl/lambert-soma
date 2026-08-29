@@ -26,6 +26,8 @@ Option 2. Concretely:
 
 Easier: onboarding ("two commands, then doctor tells you if your box is good"); adding future backends (a provider is a file, not a refactor); testing (doctor is CI-able on Apple runners). Harder: we maintain an interface with one implementation, and must resist letting vllm-mlx-isms leak through it — the interface is only as generic as its second implementation will prove.
 
+One property to preserve deliberately: **verification is endpoint-shaped, not engine-shaped.** `soma doctor` and the S1 tool-call soak audit any OpenAI-compatible `/v1` server over plain HTTP. So a future provider reuses the same tests unchanged. It contributes only three things: an install recipe, a canonical serve command with its parser flags, and a pinned model artifact for its format. The two obvious candidates: vLLM on CUDA/ROCm — the nearest sibling, with the same continuous batching, prefix caching, and even the same `--tool-call-parser` flag family — and llama.cpp's `llama-server`, which has the broadest hardware reach via GGUF models.
+
 ## Revisit when
 
 Someone actually wants a CUDA/llama.cpp provider; or vllm-mlx stalls as a project; or the cloud-only fallback turns out to be the common case (then the local tier's priority itself is in question).
