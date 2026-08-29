@@ -1,7 +1,7 @@
 # Lambert-Soma — End-to-End Plan
 
 **Status:** living document · started 2026-08-28 · Phase P0 complete
-**Companion:** [README.md](README.md) for the what and why. This file is the how.
+**Companions:** [README.md](README.md) for the what and why. [docs/implementation-plan.md](docs/implementation-plan.md) for the post-L2 how — every subsystem mapped to the exact SDK mechanism chosen (see ADR-005…008).
 **Reference hardware:** Apple M3 Max, 96 GB unified memory.
 **Cost policy:** choose the appropriate model for each task — never downgrade to hit a number. Then *measure*: the ledger reports whether monthly spend lands under the $200/mo subscription this replaces. Cost is observed, not optimized-for.
 
@@ -169,17 +169,17 @@ README with the naming thesis, MIT license, this plan, doc templates, public Git
 - **Exit:** one real task completed end to end; condensation event visible in the log; metrics split by usage_id; S3 verified (condenser on LOCAL while agent is on cloud)
 
 ### P3 — Differentiation (needs L5, L6)
-- [ ] Archetype format: markdown + YAML frontmatter with our `tier:` key
-- [ ] Agent factory: reads archetype → binds tier LLM → stamps `usage_id=agent:<name>`
+- [ ] Archetype format (ADR-006): the SDK's file-based agent format (`.agents/agents/*.md`), extended with soma conventions; tiers bind via `model: <profile>` against LOCAL/WORKER/LEAD profiles in the LLM profile store
+- [ ] Loading via `register_file_agents()` + a soma validation pass; `usage_id=agent:<name>` stamped per instance
 - [ ] 10 representative agents ported (not 84); 10–20 highest-value skills symlinked
 - [ ] Skill audit pass over everything wired to a shell (the ToxicSkills lesson: assume ~⅓ of unaudited skills have a flaw)
 - **Exit:** same task run by two archetypes shows different behavior and separate cost lines
 
 ### P4 — Teams v0 (needs L7, L8)
 - [ ] Delegation working: lead + 2 workers, fan-out/fan-in
-- [ ] ADR-003: delegation substrate — DelegateTool vs owning one Conversation per agent (decide after S4)
+- [ ] ADR-003: delegation substrate — the SDK's TaskToolSet (registered sub-agents, resume by task_id, parallel via `tool_concurrency_limit`) for lead→member work; the soma WAL for everything peer-to-peer and cross-team. S4 verifies before this is formalized
 - [ ] Beads wrapper tools: `bd_ready`, `bd_claim`, `bd_close`, `bd_create --deps discovered-from:`
-- [ ] Discipline enforcement: pre-turn nudge injects "you have N ready beads" (hooks, not prompt hope)
+- [ ] Discipline enforcement via native SDK hooks: `UserPromptSubmit` injects the ready-beads digest; `Stop` refuses finish until `done_when` holds (exit code 2 blocks — 1 does not)
 - [ ] Bench suite v0: 3 small + 2 medium repeatable tasks with golden outcomes
 - **Exit:** team completes a bench task where the lead never edits a file; delegation overhead multiplier measured (the ~7× trap, quantified for *us*)
 
@@ -208,7 +208,8 @@ README with the naming thesis, MIT license, this plan, doc templates, public Git
 - **Exit:** EXP showing shadow-mode precision ≥ 0.8 before kill authority is armed
 
 ### P8 — Theory of mind (needs P2; parallel to P6–P7)
-- [ ] InterlocutorModel (Appendix D) updated each turn by a LOCAL extraction pass
+- [x] ADR-007 (decided): built on the SDK's Tom tools — their user-model store is the substrate; we extend the schema and add the style ensemble. First task is spike S9: inspect what sleeptime-compute actually writes
+- [ ] InterlocutorModel (Appendix D) extends the Tom user model; updated each turn by a LOCAL extraction pass
 - [ ] Cognitive-style archetypes: analyst, socratic, explainer, critic, synthesizer (toolless, cheap)
 - [ ] Router (LOCAL): which ≤2 styles does this turn need? Composer merges into the reply
 - [ ] Shadow mode: log which styles *would* fire for a week of normal chat before enabling
@@ -216,6 +217,7 @@ README with the naming thesis, MIT license, this plan, doc templates, public Git
 - **Exit:** A/B result written up as an EXP, whatever the verdict
 
 ### P9 — Archetype memory (needs L9, P3)
+- [x] ADR-008 (decided): project/user facts belong to the SDK's persistent memory (MEMORY.md, `load_memory=True`, orchestrator as sole writer); soma memory is archetype-scoped only, and our injections copy the SDK's untrusted-content wrapper
 - [ ] ADR-002: store — Mem0 (namespace = archetype) vs custom SQLite + LOCAL embeddings
 - [ ] Write paths: `remember` tool; post-run reflection (LOCAL) → episode; consolidation "sleep" job promoting recurring lessons to semantic; procedural promotion drafts skill edits **behind a human review gate**
 - [ ] Read paths: factory injects top-k relevant memories at instantiation ("prior experience" block); `recall` tool mid-run
@@ -244,7 +246,7 @@ README with the naming thesis, MIT license, this plan, doc templates, public Git
 1. If the user supplied a design (YAML or prose), parse/validate it into an OrgPlan. Prose goes through the planner for formalization only.
 2. Otherwise the **planner subagent** (LEAD tier) drafts an OrgPlan: teams, charters, hierarchy (`reports_to`), members by archetype, tiers, comms topology, beads prefixes, budgets, `done_when` criteria.
 3. The planner may define **custom archetypes inline** (name, system prompt, tools, tier) when the library has no fit. Custom archetypes are schema-validated, get no shell access unless explicitly granted, and are flagged in the run report.
-4. Validation is a loop: schema errors go back to the planner with the error text, max 3 retries, then fail loudly.
+4. The planner emits the OrgPlan through a `response_schema`-typed tool call (SDK structured output), so validation happens on receipt. Residual errors go back to the planner with the error text, max 3 retries, then fail loudly.
 5. The **org compiler** turns the validated plan into runtimes: one Conversation per agent, comms subscriptions, beads namespaces, budget meters. Hierarchy = who may delegate to whom and who reports to whom via events.
 
 **Guardrails:** global and per-team budget caps are mandatory fields. A plan without `done_when` is invalid. Team count and agent count have hard ceilings in config.
@@ -329,6 +331,7 @@ Two ideas fused: an explicit **model of the other mind**, and **inner delegation
 - **Semantic tier (LOCAL):** every N events, last ~20 events → "is this agent stuck?" → `{stuck, confidence, reason}`. Runs constantly; costs nothing but local watts.
 - **Escalation ladder:** observe → nudge (inject a hint observation) → pause team → **apoptosis** (kill the instance, write the post-mortem episode, optionally respawn with the post-mortem in context) → escalate to human.
 - **Budget breakers:** hard caps per `usage_id` and per org run; tripping one pauses the team and emits a WAL event.
+- **Native slots:** SDK hooks carry the enforcement — `PreToolUse` and `Stop` can block; deterministic pattern/policy-rail analyzers stack under the LLM's self-assessed risk; `max_iteration_per_run` is the hard runaway cap. See docs/implementation-plan.md §1.
 - **Shadow first, always:** sentinels get authority only after a measured week (P7 exit criterion). A sentinel that kills productive agents is worse than no sentinel.
 
 ---
@@ -401,6 +404,8 @@ LEAD   = LLM(model="openrouter/<frontier>",       usage_id="lead")      # orches
 
 Rules: every LLM instance gets a distinct `usage_id` (`agent:<name>`, `condenser`, `sentinel`, `tom:router`…). Budget breakers per §5.5 exist to catch runaway loops, not to squeeze spend. Tier assignment follows task fit; the weekly ledger review changes an assignment only where a different tier shows quality parity — or where quality demands an upgrade.
 
+Tiers are persisted as named profiles in the SDK's LLM profile store, so archetype files bind a tier by name (`model: worker`). `FallbackStrategy` chains give WORKER and LEAD transient-failure resilience across providers.
+
 Known cost traps carried forward: subagent-heavy workflows can run ~7× tokens (measure ours in P4); condensation invalidates prompt-cache prefixes (cheap on LOCAL, watch it on LEAD); pin LiteLLM far from the known-malicious 1.82.7/1.82.8 releases.
 
 ---
@@ -414,7 +419,10 @@ Spikes that can invalidate the design run **first**, not when convenient.
 | S1 ✅ | Quantized Qwen3-Coder emits clean tool calls over long sessions | 10+ turn soak, count malformations | **Verified 2026-08-28** — PASS, but only with `--tool-call-parser qwen3_coder --enable-auto-tool-choice`; without them, calls degrade to unparsed XML text |
 | S2 | Per-subagent LLM independence works across mixed providers with separate Metrics | mixed local+OpenRouter delegation run | routing happens outside the SDK (own dispatcher); plan §5.1 unchanged, plumbing changes |
 | S3 | Condenser can run on LOCAL while the agent runs on cloud | P2 config | condense on WORKER; local-share metric takes a hit |
-| S4 | DelegateTool supports our team topology (addressable children, results fan-in) | L7 spike | org compiler owns one Conversation per agent; delegation becomes compiler-managed spawns (ADR-003) |
+| S4 | TaskToolSet supports our team topology — registered sub-agents, fan-in, resume by task_id, parallel calls (the guides say yes; the spike verifies rather than explores) | L7 spike | org compiler owns one Conversation per agent; delegation becomes compiler-managed spawns (ADR-003) |
+| S8 | `send_message()` while running is a safe, ordered inbox channel for WAL digests | two-cell handoff using only mid-run sends | harness drives `step()` directly and injects between steps |
+| S9 | Tom tools' stored user model is rich enough to extend (ADR-007) | run the tools; read `user_model.json` | ToM layer built independently, theirs as reference |
+| S10 | Semantic gates can run on LOCAL for any cell — prompt-hooks copy the *conversation's* LLM, so a LEAD cell's prompt-hook bills LEAD | command-hooks curling localhost:8000, or event callbacks | prompt-hooks only on LOCAL-tier cells; callbacks everywhere else |
 | S5 | SQLite WAL survives interleaved writers from concurrent conversations | chaos test, 2+ writers, 10K events | JSONL + flock, or a tiny event-broker thread in process 3 |
 | S6 | Beads discipline is enforceable via wrapper tools + pre-turn nudges | P4 team run, count orphaned work | harness-level enforcement: no turn starts without a claimed bead |
 | S7 ✅ | 96 GB sustains model + KV for ~10 streams + condenser traffic at usable tok/s | S1 under concurrent load | **Verified 2026-08-28** — usable through ~4–6 concurrent streams (peak 57 tok/s aggregate at c=4); saturates by c=8, so the router queues beyond ~6 rather than downsizing the model |
