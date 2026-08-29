@@ -1,0 +1,39 @@
+[project]
+name = "lambert-soma"
+version = "0.0.1"
+description = "A body for the model, a world for the swarm — open-source local+cloud hybrid agent harness."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+authors = [{ name = "Kushal D'Souza" }]
+keywords = ["agents", "llm", "orchestration", "multi-agent", "mlx"]
+dependencies = []
+
+[project.optional-dependencies]
+# The local inference tier. Apple Silicon only in v0 (ADR-005): the platform
+# marker makes this extra a quiet no-op elsewhere — install never breaks,
+# `soma doctor` reports what the box can actually do.
+local-mlx = [
+  "vllm-mlx==0.4.1; sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
+
+[project.scripts]
+soma = "soma.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/lyndonkl/lambert-soma"
+Plan = "https://github.com/lyndonkl/lambert-soma/blob/main/PLAN.md"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/soma"]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

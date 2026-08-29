@@ -156,7 +156,7 @@ README with the naming thesis, MIT license, this plan, doc templates, public Git
 - **Exit:** local endpoint stable under 4+ concurrent streams; baseline cost report exists; EXP-001 (baseline) written
 
 ### P2 — The spine (needs L2, L4, L6)
-- [ ] `uv`-managed package; `src/soma` layout; ruff + pytest wired
+- [x] `uv`-managed package; `src/soma` layout; ruff + pytest wired — pulled forward into the packaging-bootstrap PR, with `soma doctor` and `soma local up` (v0 of ADR-005's provider chain)
 - [ ] Single agent on OpenHands SDK, LEAD tier, default tools
 - [ ] Condenser on LOCAL (`max_size=80, keep_first=4`), **verified firing** (never assume the default)
 - [ ] Telemetry v0: run ledger (`~/.soma/telemetry.db`) — one row per run: config hash, task fingerprint, outcome, tokens/cost per `usage_id`, duration
