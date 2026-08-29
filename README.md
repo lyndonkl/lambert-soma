@@ -7,7 +7,7 @@
 
 Lambert-Soma is an open-source, **local + cloud hybrid harness** for running societies of AI agents. We are building it to replace a proprietary coding-agent subscription with something we own end to end. At its core is an **orchestrator**: it runs the main loop, works a goal solo when that's enough, and convenes an **organization** when it isn't — one team or many, flat or hierarchical, staffed by specialized subagents. Those agents plan on a shared task graph. They talk to each other through **shared write-ahead logs and typed events**. And their generic *types* (not instances) accumulate **episodic, semantic, procedural, and temporal memory** across every life they live.
 
-**Status:** 🥚 pre-alpha, design-and-learning phase. The full end-to-end plan lives in [PLAN.md](PLAN.md). Reference hardware is an Apple M3 Max (96 GB unified memory), but nothing here is Mac-specific except the local inference tier.
+**Status:** 🥚 pre-alpha, design-and-learning phase. The full end-to-end plan lives in [PLAN.md](PLAN.md). Reference hardware is an Apple M3 Max (96 GB unified memory). The local inference tier is **Apple Silicon only in v0** — it sits behind a generic local-provider interface, so other backends (CUDA vLLM, llama.cpp) can slot in later. Everywhere else, the harness runs cloud-only.
 
 ---
 

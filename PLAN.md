@@ -59,6 +59,7 @@ Each Learn unit runs the same way:
 - No constrained decoding / structured-generation stack. Validate-and-retry with a cheap local fix-up call.
 - No fine-tuning, ever, in this repo. The Weismann barrier: all learning is somatic (memory, skills, prompts).
 - No multi-machine distribution. One Mac plus cloud APIs.
+- No cross-platform local tier. v0 is Apple Silicon only, enforced by a packaging marker (`vllm-mlx ; sys_platform == 'darwin' and platform_machine == 'arm64'`), never by scattered platform checks. A `LocalProvider` interface (detect / install / download / serve / verify) keeps the methodology generic: other backends (CUDA vLLM, llama.cpp) become new providers later. Off-Mac, the harness runs cloud-only — LOCAL work falls through to WORKER with a warning. See ADR-005.
 - Not a general framework for other people's stacks yet. Build for ours; generalize when it works.
 
 ### Success criteria for v0.1 ("it replaced the subscription")
@@ -97,6 +98,7 @@ Everything else — routing, condenser, memory, WAL, ToM — is a library inside
 | `soma.tom` | Interlocutor model; cognitive-style registry; turn pipeline; composer |
 | `soma.memory` | Archetype memory: episodic store, consolidation ("sleep"), procedural promotion, retrieval |
 | `soma.routing` | Tier definitions; agent factory; `usage_id` accounting; router policies |
+| `soma.local` | Local substrate providers (detect/install/download/serve/verify); v0: vllm-mlx on Apple Silicon (ADR-005); `soma local up`, `soma doctor --local` |
 | `soma.sentinels` | Rule + semantic loop detection; budget breakers; escalation ladder; apoptosis |
 | `soma.telemetry` | Run ledger; structured logs; replay bundles; canaries; `soma report` |
 | `soma.archetypes` | Agent type definitions (markdown + YAML frontmatter), loader, validation |
@@ -149,6 +151,8 @@ README with the naming thesis, MIT license, this plan, doc templates, public Git
 - [ ] Throughput curve recorded: tok/s at 1K/16K/64K context (S7)
 - [ ] `iogpu.wired_limit_mb` decision recorded (ADR if we raise it)
 - [ ] Baseline spend measured: a normal day's work through OpenRouter, token distribution captured
+- [x] ADR-005: local-provider abstraction; Apple-only v0 via packaging markers; cloud-only fallback off-Mac
+- [ ] This setup codified as `soma local up` + `soma doctor --local` in P2 — the S1 spike graduates into doctor, so every installer runs the same verification we did
 - **Exit:** local endpoint stable under 4+ concurrent streams; baseline cost report exists; EXP-001 (baseline) written
 
 ### P2 — The spine (needs L2, L4, L6)
