@@ -1,0 +1,20 @@
+# soma.toml — lambert-soma harness configuration.
+# Delete any line to fall back to its default.
+
+[soma]
+runs_dir = "runs"
+profile_store_dir = "~/.soma/profiles"
+
+# The local tier (Apple Silicon, ADR-005). Zero cost by definition.
+[local]
+model = "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
+base_url = "http://localhost:8000/v1"
+port = 8000
+
+# Cloud tiers. Fit-first policy: pick the model each job deserves,
+# then let the ledger report the bill. EDIT these to taste.
+[worker]
+model = "openrouter/qwen/qwen3-coder"
+
+[lead]
+model = "openrouter/anthropic/claude-sonnet-4.5"
