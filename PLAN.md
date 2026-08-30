@@ -237,6 +237,8 @@ README with the naming thesis, MIT license, this plan, doc templates, public Git
 
 ## 5. Research track — the novel subsystems
 
+Everything below builds inside the layer doctrine (ADR-010): each abstraction level — cell, team, teams-of-teams — is self-contained, and levels touch each other only through logs. Cells know nothing outside their logs; teams know only their members; inter-team contact goes through appointed leaders with deterministic succession; a team presents the cell contract externally, which is what makes the hierarchy recursive.
+
 ### 5.1 Organizational orchestration
 
 **Decision policy (v0, deliberately dumb):** the orchestrator asks LOCAL to classify the goal — estimated scope (files touched, parallelizable subtasks, review needs). Below thresholds → solo. Above → org path. The classifier's verdicts are logged and reviewed weekly; thresholds are tuned from data, not intuition.
@@ -419,7 +421,7 @@ Spikes that can invalidate the design run **first**, not when convenient.
 | S1 ✅ | Quantized Qwen3-Coder emits clean tool calls over long sessions | 10+ turn soak, count malformations | **Verified 2026-08-28** — PASS, but only with `--tool-call-parser qwen3_coder --enable-auto-tool-choice`; without them, calls degrade to unparsed XML text |
 | S2 | Per-subagent LLM independence works across mixed providers with separate Metrics | mixed local+OpenRouter delegation run | routing happens outside the SDK (own dispatcher); plan §5.1 unchanged, plumbing changes |
 | S3 | Condenser can run on LOCAL while the agent runs on cloud | P2 config | condense on WORKER; local-share metric takes a hit |
-| S4 | TaskToolSet supports our team topology — registered sub-agents, fan-in, resume by task_id, parallel calls (the guides say yes; the spike verifies rather than explores) | L7 spike | org compiler owns one Conversation per agent; delegation becomes compiler-managed spawns (ADR-003) |
+| S4 (repurposed by ADR-010) | TaskToolSet works as a CELL-INTERNAL sub-agent helper — never inter-cell transport, which is board + logs only | optional spike when a cell first needs private sub-agents | cells decompose via their own beads instead |
 | S8 | `send_message()` while running is a safe, ordered inbox channel for WAL digests | two-cell handoff using only mid-run sends | harness drives `step()` directly and injects between steps |
 | S9 | Tom tools' stored user model is rich enough to extend (ADR-007) | run the tools; read `user_model.json` | ToM layer built independently, theirs as reference |
 | S10 | Semantic gates can run on LOCAL for any cell — prompt-hooks copy the *conversation's* LLM, so a LEAD cell's prompt-hook bills LEAD | command-hooks curling localhost:8000, or event callbacks | prompt-hooks only on LOCAL-tier cells; callbacks everywhere else |

@@ -5,7 +5,7 @@
 
 All guide paths below are relative to `https://docs.openhands.dev`.
 
-Runtime scaffolding — board + registry + two-gate completion, D1/D2/D3 — is decided in [ADR-009](decisions/ADR-009-org-scaffolding.md). The PR-by-PR build order lives in [build-plan.md](build-plan.md).
+Runtime scaffolding — board + registry + two-gate completion, D1/D2/D3 — is decided in [ADR-009](decisions/ADR-009-org-scaffolding.md). The layer doctrine (self-contained levels, logs as the only membrane, leaders with deterministic succession) is [ADR-010](decisions/ADR-010-layer-doctrine.md). The PR-by-PR build order lives in [build-plan.md](build-plan.md), restructured bottom-up per that doctrine.
 
 ## 1. Subsystem → SDK mechanism map
 
@@ -15,7 +15,7 @@ Runtime scaffolding — board + registry + two-gate completion, D1/D2/D3 — is 
 | Archetypes (ADR-006) | file-based agents `.agents/agents/*.md`, `register_file_agents()`; extensions via `metadata: soma_*` | `/sdk/guides/agent-file-based` | conventions + validation pass; port tooling |
 | Tiers | `LLMProfileStore` profiles `local`/`worker`/`lead`; archetypes bind via `model: <profile>`; `FallbackStrategy` for cloud resilience; per-instance `usage_id` | `/sdk/guides/llm-profile-store`, `/sdk/guides/llm-fallback` | profile bootstrap in soma init; the fit-first assignment policy |
 | Local tier | `LLM(base_url="http://localhost:8000/v1", input_cost_per_token=0, output_cost_per_token=0)` | `/sdk/arch/llm` | done — `soma local up` (P1, ADR-005) |
-| In-team delegation | `TaskToolSet` + `register_agent`; resume via `task_id`; parallel fan-out via `tool_concurrency_limit` (experimental — default 1, leads get 2–4) | `/sdk/guides/task-tool-set`, `/sdk/guides/parallel-tool-execution` | org-compiler wiring; S4 verification |
+| Inter-cell task flow | board + logs ONLY (ADR-010): bead assignment + log notification; team observes via journal. `TaskToolSet` demoted to cell-internal sub-agents (optional, S4 repurposed) | `/sdk/guides/task-tool-set` (internal use only) | team protocol (build-plan PR-13/16) |
 | Cross-team / peer comms | none — entirely soma: SQLite WAL (scope column, cursors) + `wal_publish`/`wal_read` as custom tools (shared executor holds the db handle) | `/sdk/guides/custom-tools` (patterns only) | the whole fabric (PLAN §5.2) |
 | Inbox delivery | primary candidate: `conversation.send_message()` **while running** — documented as safe mid-execution; fallback: drive `step()` ourselves | `/sdk/guides/convo-send-message-while-running` | the WAL watcher; spike S8 decides |
 | Planner → OrgPlan | agent whose finish tool carries `response_schema=OrgPlan` — typed, validated on receipt, `parse_last_response()` survives persistence | `/sdk/guides/structured-output` | OrgPlan schema, templates, retry-on-invalid |
