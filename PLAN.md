@@ -1,7 +1,7 @@
 # Lambert-Soma — End-to-End Plan
 
-**Status:** living document · started 2026-08-28 · Phase P0 complete
-**Companions:** [README.md](README.md) for the what and why. [docs/implementation-plan.md](docs/implementation-plan.md) for the post-L2 how — every subsystem mapped to the exact SDK mechanism chosen (see ADR-005…008).
+**Status:** living document · started 2026-08-28 · Phase P0 complete.
+**Companions:** [README.md](README.md) for the what and why. [docs/implementation-plan.md](docs/implementation-plan.md) for the post-L2 how — every subsystem mapped to the exact SDK mechanism chosen (see ADR-005…009). [docs/build-plan.md](docs/build-plan.md) for the PR-by-PR build ladder.
 **Reference hardware:** Apple M3 Max, 96 GB unified memory.
 **Cost policy:** choose the appropriate model for each task — never downgrade to hit a number. Then *measure*: the ledger reports whether monthly spend lands under the $200/mo subscription this replaces. Cost is observed, not optimized-for.
 
@@ -142,7 +142,7 @@ Mental-model docs are numbered `01-vllm-mlx.md` … `10-mcp.md`. Add units freel
 
 ## 4. Build track — phases and exit criteria
 
-Every phase's exit criteria include its telemetry. If we didn't measure it, we didn't build it.
+Every phase's exit criteria include its telemetry. If we didn't measure it, we didn't build it. Build order and PR breakdown live in [docs/build-plan.md](docs/build-plan.md); the phases below remain the milestone map.
 
 ### P0 — Repo bootstrap ✅ (2026-08-28)
 README with the naming thesis, MIT license, this plan, doc templates, public GitHub repo.
@@ -423,6 +423,8 @@ Spikes that can invalidate the design run **first**, not when convenient.
 | S8 | `send_message()` while running is a safe, ordered inbox channel for WAL digests | two-cell handoff using only mid-run sends | harness drives `step()` directly and injects between steps |
 | S9 | Tom tools' stored user model is rich enough to extend (ADR-007) | run the tools; read `user_model.json` | ToM layer built independently, theirs as reference |
 | S10 | Semantic gates can run on LOCAL for any cell — prompt-hooks copy the *conversation's* LLM, so a LEAD cell's prompt-hook bills LEAD | command-hooks curling localhost:8000, or event callbacks | prompt-hooks only on LOCAL-tier cells; callbacks everywhere else |
+| S11 | Beads embedded mode (single-writer Dolt) tolerates colony write patterns | 5+ concurrent cells writing via wrapper tools (build-plan PR-07) | serialize writes through the harness, or run `dolt sql-server` mode |
+| S12 | Mem0 OSS works as the archetype store — local LLM config, embedder choice, infer modes, recall quality | spike per build-plan PR-25 | custom SQLite + local embeddings store (~300 lines); ADR-002 plan B |
 | S5 | SQLite WAL survives interleaved writers from concurrent conversations | chaos test, 2+ writers, 10K events | JSONL + flock, or a tiny event-broker thread in process 3 |
 | S6 | Beads discipline is enforceable via wrapper tools + pre-turn nudges | P4 team run, count orphaned work | harness-level enforcement: no turn starts without a claimed bead |
 | S7 ✅ | 96 GB sustains model + KV for ~10 streams + condenser traffic at usable tok/s | S1 under concurrent load | **Verified 2026-08-28** — usable through ~4–6 concurrent streams (peak 57 tok/s aggregate at c=4); saturates by c=8, so the router queues beyond ~6 rather than downsizing the model |

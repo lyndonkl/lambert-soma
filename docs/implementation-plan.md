@@ -5,6 +5,8 @@
 
 All guide paths below are relative to `https://docs.openhands.dev`.
 
+Runtime scaffolding — board + registry + two-gate completion, D1/D2/D3 — is decided in [ADR-009](decisions/ADR-009-org-scaffolding.md). The PR-by-PR build order lives in [build-plan.md](build-plan.md).
+
 ## 1. Subsystem → SDK mechanism map
 
 | Soma subsystem | SDK mechanism | Guide | What we still write |
