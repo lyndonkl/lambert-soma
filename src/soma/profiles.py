@@ -1,11 +1,13 @@
-"""LLM tier profiles: local / worker / lead.
+"""LLM tier profiles — one per tier declared in soma.toml.
 
 The tiers live as named profiles in the SDK's LLMProfileStore, so an
 archetype file can bind one with `model: worker` (ADR-006) and the
-whole routing story stays data. `soma init` writes them; `soma doctor`
-checks them.
+whole routing story stays data. `soma init` writes one profile per
+declared tier; `soma doctor` scans the store and checks whatever is
+actually there. `local` is the one reserved tier (built against the
+local server, costs pinned to zero); everything else is a cloud tier.
 
-Secrets: worker/lead read OPENROUTER_API_KEY from the environment at
+Secrets: cloud tiers read OPENROUTER_API_KEY from the environment at
 init time and are saved with include_secrets=True into a user-local
 store (never inside the repo). The local tier needs no key.
 """
@@ -19,8 +21,12 @@ from pydantic import SecretStr
 
 from soma.config import SomaConfig
 
-TIER_NAMES = ("local", "worker", "lead")
 CLOUD_KEY_ENV = "OPENROUTER_API_KEY"
+
+
+def tier_names(cfg: SomaConfig) -> tuple[str, ...]:
+    """Every tier this config declares: local plus the cloud tiers."""
+    return ("local", *cfg.tiers)
 
 
 def _build_llm(name: str, cfg: SomaConfig, env: Mapping[str, str]):
@@ -36,10 +42,9 @@ def _build_llm(name: str, cfg: SomaConfig, env: Mapping[str, str]):
             output_cost_per_token=0.0,
         )
     key = env.get(CLOUD_KEY_ENV)
-    tier = cfg.worker if name == "worker" else cfg.lead
     return LLM(
         usage_id=name,
-        model=tier.model,
+        model=cfg.tiers[name].model,
         api_key=SecretStr(key) if key else None,
     )
 
@@ -49,7 +54,7 @@ def bootstrap_profiles(
     force: bool = False,
     env: Mapping[str, str] | None = None,
 ) -> list[str]:
-    """Create the three tier profiles. Existing ones are kept unless force.
+    """Create one profile per declared tier. Existing ones are kept unless force.
 
     Returns human-readable report lines.
     """
@@ -61,7 +66,7 @@ def bootstrap_profiles(
     store = LLMProfileStore(store_path)
     existing = set(store.list())
     report: list[str] = []
-    for name in TIER_NAMES:
+    for name in tier_names(cfg):
         listed = f"{name}.json" in existing or name in existing
         if listed and not force:
             report.append(f"kept    {name} (exists; use --force to overwrite)")
@@ -72,13 +77,19 @@ def bootstrap_profiles(
         report.append(f"{verb} {name} -> {llm.model}")
     if not env.get(CLOUD_KEY_ENV):
         report.append(
-            f"warning: {CLOUD_KEY_ENV} not set — worker/lead saved without a key"
+            f"warning: {CLOUD_KEY_ENV} not set — cloud tiers "
+            f"({', '.join(cfg.tiers)}) saved without a key"
         )
     return report
 
 
 def check_profiles(cfg: SomaConfig) -> list[tuple[bool | None, str]]:
-    """Doctor checks. Returns (ok, message); ok=None means informational."""
+    """Doctor checks. Returns (ok, message); ok=None means informational.
+
+    Scans the store itself: declared tiers must have a loadable profile,
+    and hand-added profiles (in the store but not in soma.toml) are
+    checked too — archetypes can bind those by name just the same.
+    """
     from openhands.sdk import LLMProfileStore
 
     checks: list[tuple[bool | None, str]] = []
@@ -87,7 +98,13 @@ def check_profiles(cfg: SomaConfig) -> list[tuple[bool | None, str]]:
         checks.append((False, f"profile store missing at {store_path} — run: soma init"))
         return checks
     store = LLMProfileStore(store_path)
-    for name in TIER_NAMES:
+    present = {n.removesuffix(".json") for n in store.list()}
+    declared = tier_names(cfg)
+    extras = sorted(present - set(declared))
+    for name in [*declared, *extras]:
+        if name not in present:
+            checks.append((False, f"tier '{name}' in soma.toml but no profile — run: soma init"))
+            continue
         try:
             llm = store.load(name)
         except Exception as exc:  # noqa: BLE001 — doctor must survive any bad profile file
@@ -105,4 +122,6 @@ def check_profiles(cfg: SomaConfig) -> list[tuple[bool | None, str]]:
                 (has_key if has_key else None,
                  f"'{name}' API key {'present' if has_key else 'missing — cloud calls will fail'}")
             )
+        if name in extras:
+            checks.append((None, f"profile '{name}' not in soma.toml (hand-added — still bindable)"))
     return checks

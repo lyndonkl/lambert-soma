@@ -3,7 +3,7 @@
 The orchestrator commands land with the build phases (see PLAN.md and
 docs/build-plan.md). This bootstrap ships the environment story:
 
-    soma init        write soma.toml (if absent) + the three LLM tier profiles
+    soma init        write soma.toml (if absent) + one LLM profile per tier
     soma doctor      what can this box do? (config, profiles, local server)
     soma local up    run the local inference server with the canonical flags
 
