@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "lambert_soma",
+  "project_id": "33b8474c-931f-40e6-a78c-1ebf2eba3340"
+}

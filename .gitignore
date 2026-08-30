@@ -38,3 +38,9 @@ telemetry/*.db
 # Model artifacts
 *.gguf
 *.safetensors
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
