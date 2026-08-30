@@ -105,6 +105,13 @@ Rung 5  HARDENING            (canary, visualizer, library port, v0.1)
 | 40 | Library port batches | remaining archetypes/skills, ~10 per PR, audit-gated | audit reports per batch | S× n |
 | 41 | v0.1 | README refresh; all seven success criteria in one tracked report; tag | the v0.1 report | M |
 
+## Live-tooling notes (dogfooding, 2026-08-30)
+
+- The ladder now LIVES on this repo's beads board: root epic `lambert-soma-bad`, one child epic per rung, one task per PR, 42 blocks-edges. `bd ready` is the source of truth for what to build next (only PR-01 is ready at start). Rung epics are deliberately NOT chained — a blocked parent blocks its children, which would over-constrain the riders' cross-links (e.g. the Mem0 spike unlocks after Rung 1, not Rung 3).
+- Installed `bd 1.2.2` (Homebrew core; Dolt bundled). **Deviation from the 1.1.0 docs: the `bd events` journal CLI does not exist in 1.2.2** (`bd config set events-journal true` is accepted but flagged unrecognized). PR-16's observation mechanism must be probed against the installed version — candidates: a newer bd release, `bd serve`'s HTTP feed, or polling `bd list --json` diffs. Pin the bd version in doctor either way.
+- Issue prefix is `lambert-soma-*` (from repo name); children get dotted ids (`lambert-soma-bad.1.1` = PR-01).
+- `bd init` self-committed its config (AGENTS.md, CLAUDE.md managed section, `.claude/settings.json` SessionStart hook → `bd prime`, `.agents/skills/beads/SKILL.md`, `.beads/` tracked config). The beads SKILL.md plugs directly into our SDK skill loading later.
+
 ## Notes vs the 2026-08-29 cut
 
 - **TaskToolSet removed from the ladder** (was PR-15): per ADR-010 it is cell-internal only, never inter-cell transport. Kill-list S4 repurposed. If a cell later wants private sub-agents, that's a small rider PR.
