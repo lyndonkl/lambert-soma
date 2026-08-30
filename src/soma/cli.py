@@ -1,9 +1,10 @@
 """soma CLI — bootstrap subset.
 
-The orchestrator commands land with the build phases (see PLAN.md). This
-bootstrap ships the environment story:
+The orchestrator commands land with the build phases (see PLAN.md and
+docs/build-plan.md). This bootstrap ships the environment story:
 
-    soma doctor      what can this box do? (platform, tiers, local server)
+    soma init        write soma.toml (if absent) + one LLM profile per tier
+    soma doctor      what can this box do? (config, profiles, local server)
     soma local up    run the local inference server with the canonical flags
 
 The canonical flags exist because S1 taught us that without the right
@@ -23,6 +24,8 @@ import sys
 import time
 import urllib.error
 import urllib.request
+
+os.environ.setdefault("OPENHANDS_SUPPRESS_BANNER", "1")  # before any lazy SDK import
 
 CANONICAL_MODEL = "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
 DEFAULT_PORT = 8000
@@ -57,12 +60,41 @@ def _post(url: str, payload: dict, timeout: float = 60.0) -> dict:
         return json.load(r)
 
 
+def soma_init(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from soma.config import CONFIG_FILENAME, STARTER_TOML, load_config
+    from soma.profiles import bootstrap_profiles
+
+    cfg, path = load_config()
+    if path is None:
+        Path(CONFIG_FILENAME).write_text(STARTER_TOML)
+        print(f"{OK} wrote ./{CONFIG_FILENAME} (starter — edit the cloud models to taste)")
+        cfg, path = load_config()
+    else:
+        print(f"{OK} using {path}")
+    for line in bootstrap_profiles(cfg, force=args.force):
+        mark = OK if not line.startswith("warning") else BAD
+        print(f"{mark} {line}")
+    print(f"profiles at {cfg.profile_store_path} — verify with: soma doctor")
+    return 0
+
+
 def doctor(args: argparse.Namespace) -> int:
+    from soma.config import load_config
+    from soma.profiles import check_profiles
+
     base = f"http://localhost:{args.port}/v1"
     local_ready = False
 
     print(f"soma doctor — {platform.platform()}")
     print(f"{OK} python {platform.python_version()}")
+
+    cfg, cfg_path = load_config()
+    print(f"{OK} config: {cfg_path}" if cfg_path else f"{SKIP} no soma.toml — using defaults (run: soma init)")
+    for ok_flag, message in check_profiles(cfg):
+        mark = OK if ok_flag else (SKIP if ok_flag is None else BAD)
+        print(f"{mark} {message}")
 
     if _apple_silicon():
         print(f"{OK} apple silicon: local tier possible on this machine")
@@ -133,6 +165,11 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="soma", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="command", required=True)
+
+    ini = sub.add_parser("init", help="write soma.toml (if absent) and the tier profiles")
+    ini.add_argument("--force", action="store_true",
+                     help="overwrite existing profiles with config values")
+    ini.set_defaults(fn=soma_init)
 
     d = sub.add_parser("doctor", help="report what this machine can do")
     d.add_argument("--port", type=int, default=DEFAULT_PORT)

@@ -1,0 +1,36 @@
+# soma.toml — lambert-soma harness configuration.
+# Delete any line to fall back to its default.
+
+[soma]
+runs_dir = "runs"
+profile_store_dir = "~/.soma/profiles"
+
+# The local tier (Apple Silicon, ADR-005). Zero cost by definition.
+[local]
+model = "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
+base_url = "http://localhost:8000/v1"
+port = 8000
+
+# Cloud tiers. Every other section in this file declares one — name it
+# anything ([reviewer], [scout], ...) and archetypes bind it by name
+# (`model: reviewer`). worker and lead always exist: the harness binds
+# them. Fit-first policy: pick the model each seat deserves, then let
+# the ledger report the bill. Comments give $/M tokens in/out, 2026-08.
+
+[worker]  # agentic coding workhorse (SWE-bench Verified 80.6%)
+model = "openrouter/deepseek/deepseek-v4-pro"  # $0.42 / $0.83
+
+[lead]  # judgment seat: planning, delegation, audits (thinking model)
+model = "openrouter/moonshotai/kimi-k3"  # $3.00 / $15.00
+
+[analysis]  # data analysis, math-heavy interpretation (AIME26 99.2%)
+model = "openrouter/z-ai/glm-5.2"  # $1.19 / $3.74
+
+[summarizer]  # digests and condensation at cloud altitude
+model = "openrouter/deepseek/deepseek-v4-flash-0731"  # $0.07 / $0.18
+
+[classifier]  # labels and routing decisions, tiny outputs
+model = "openrouter/qwen/qwen3.7-flash"  # $0.03 / $0.13
+
+[intent]  # request -> structured intent parsing
+model = "openrouter/z-ai/glm-5.3-flash"  # $0.08 / $0.25
