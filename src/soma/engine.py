@@ -88,13 +88,15 @@ def build_agent(cfg: SomaConfig, tier: str = "worker", condense_at: int | None =
 
 
 def _make_conversation(agent, workspace: Path, persistence_dir: Path,
-                       max_iterations: int, visualize: bool):
+                       max_iterations: int, visualize: bool,
+                       conversation_id=None):
     from openhands.sdk import Conversation
 
     return Conversation(
         agent,
         workspace=str(workspace),
         persistence_dir=str(persistence_dir),
+        conversation_id=conversation_id,
         max_iteration_per_run=max_iterations,
         visualizer=None if not visualize else _default_visualizer(),
         delete_on_close=False,
@@ -167,6 +169,66 @@ def run_task(
 
     try:
         conversation.send_message(task)
+        conversation.run()
+    except KeyboardInterrupt:
+        _record("interrupted")
+        return RunResult(run_id, "interrupted",
+                         persistence_dir, "stopped by user; event log kept")
+    except Exception as exc:
+        for exc_type, kind, hint in _llm_error_hints():
+            if isinstance(exc, exc_type):
+                _record(f"error:{kind}")
+                return RunResult(run_id, f"error:{kind}", persistence_dir, f"{hint} ({exc})")
+        _record("error:crash")
+        raise
+    status = conversation.state.execution_status.value
+    _record(status)
+    return RunResult(run_id, status, persistence_dir)
+
+
+def resume_run(
+    run_id: str,
+    cfg: SomaConfig,
+    tier: str | None = None,
+    max_iterations: int = DEFAULT_MAX_ITERATIONS,
+    condense_at: int | None = None,
+    visualize: bool = True,
+) -> RunResult:
+    """Continue a dead-but-unfinished run (Cell Protocol R1/R2).
+
+    Restore data, reconstruct definitions: the event log and workspace
+    come from the bundle, the conversation_id from base_state.json, and
+    the Agent is rebuilt from CURRENT config (tier from the ledger's
+    memory of the run unless overridden). The SDK sees the existing
+    SystemPromptEvent and continues — it never re-inits (R2).
+    """
+    import uuid as uuid_mod
+
+    from soma.telemetry import harvest_bundle, record_run, run_meta, utcnow_iso
+
+    persistence_dir = cfg.runs_path / run_id
+    state = harvest_bundle(persistence_dir)
+    if state is None:
+        raise ValueError(
+            f"no bundle for run '{run_id}' under {cfg.runs_path} — nothing to resume"
+        )
+    meta = run_meta(cfg, run_id) or {}
+    tier = tier or meta.get("tier") or "worker"
+    conversation_id = uuid_mod.UUID(state["id"])
+    workspace = Path(state["workspace"]["working_dir"])
+    started_at = meta.get("started_at") or utcnow_iso()
+    task = meta.get("task") or "(resumed; original task in event log)"
+    agent = build_agent(cfg, tier=tier, condense_at=condense_at)
+    conversation = _make_conversation(
+        agent, workspace, persistence_dir, max_iterations, visualize,
+        conversation_id=conversation_id,
+    )
+
+    def _record(status: str) -> None:
+        record_run(cfg, run_id, task, tier, str(workspace), status,
+                   persistence_dir, started_at)
+
+    try:
         conversation.run()
     except KeyboardInterrupt:
         _record("interrupted")

@@ -131,6 +131,22 @@ def record_run(
         return False
 
 
+def run_meta(cfg: SomaConfig, run_id: str) -> dict | None:
+    """The ledger's memory of one run (tier, task, started_at) — used by
+    resume to reconstruct definitions. None if unrecorded."""
+    db_path = cfg.telemetry_db_path
+    if not db_path.is_file():
+        return None
+    with _connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT task, tier, workspace, started_at FROM runs WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    return {"task": row[0], "tier": row[1], "workspace": row[2], "started_at": row[3]}
+
+
 def render_costs(cfg: SomaConfig, since: str | None = None) -> str:
     """The costs report. Deterministic ordering for golden tests."""
     db_path = cfg.telemetry_db_path
