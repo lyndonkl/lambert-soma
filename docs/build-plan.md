@@ -34,7 +34,7 @@ Rung 5  HARDENING            (canary, visualizer, library port, v0.1)
 |---|---|---|---|---|
 | 01 | Profiles & config | `soma init`: LLM profile store (`local`/`worker`/`lead`), `soma.toml`; doctor checks profiles | doctor snapshot test; config unit tests | S |
 | 02 | Proto-cell engine | `soma run "<task>"`: one Conversation + LocalWorkspace, persistence under `runs/<run_id>/`, condenser on `local` profile, typed LLM-exception handling. (No protocol yet — this is the engine the protocol will wrap.) | E2E task; **S3 verified** — condensation on local while agent on cloud | M |
-| 03 | Telemetry ledger v0 | `~/.soma/telemetry.db` (`runs`, `llm_calls` per `usage_id`); config hash via `OpenHandsAgentSettings`; `soma report costs` | golden report; ledger row asserted after PR-02 E2E | M |
+| 03 | Telemetry ledger v0 | `~/.soma/telemetry.db` (`runs`, `llm_calls` per `usage_id`); config hash = sha256/12 over the bundle's serialized agent block (artifact-sourced: hashable post-hoc, no SDK objects needed); `soma report costs` | golden report; ledger row asserted after PR-02 E2E | M |
 
 ## Rung 1 — THE CELL
 

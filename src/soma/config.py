@@ -54,6 +54,7 @@ DEFAULT_TIERS: dict[str, CloudTier] = {
 class SomaConfig(BaseModel):
     runs_dir: str = "runs"
     profile_store_dir: str = "~/.soma/profiles"
+    telemetry_db: str = "~/.soma/telemetry.db"
     local: LocalTier = LocalTier()
     tiers: dict[str, CloudTier] = DEFAULT_TIERS
 
@@ -64,6 +65,10 @@ class SomaConfig(BaseModel):
     @property
     def runs_path(self) -> Path:
         return Path(self.runs_dir).expanduser()
+
+    @property
+    def telemetry_db_path(self) -> Path:
+        return Path(self.telemetry_db).expanduser()
 
 
 def _find_config_file(start: Path) -> Path | None:
@@ -116,6 +121,7 @@ STARTER_TOML = """\
 [soma]
 runs_dir = "runs"
 profile_store_dir = "~/.soma/profiles"
+telemetry_db = "~/.soma/telemetry.db"
 
 # The local tier (Apple Silicon, ADR-005). Zero cost by definition.
 [local]

@@ -15,6 +15,7 @@ def cfg(tmp_path) -> SomaConfig:
     c = SomaConfig(
         profile_store_dir=str(tmp_path / "profiles"),
         runs_dir=str(tmp_path / "runs"),
+        telemetry_db=str(tmp_path / "ledger.db"),  # never the user's real ledger
     )
     bootstrap_profiles(c, env={"OPENROUTER_API_KEY": "sk-test"})
     return c

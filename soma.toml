@@ -4,6 +4,7 @@
 [soma]
 runs_dir = "runs"
 profile_store_dir = "~/.soma/profiles"
+telemetry_db = "~/.soma/telemetry.db"
 
 # The local tier (Apple Silicon, ADR-005). Zero cost by definition.
 [local]
