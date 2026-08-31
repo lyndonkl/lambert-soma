@@ -147,23 +147,38 @@ def run_task(
     visualize: bool = True,
 ) -> RunResult:
     """Run one task to a terminal status. The run bundle always survives."""
+    from soma.telemetry import record_run, utcnow_iso
+
     run_id = run_id or new_run_id()
     persistence_dir = cfg.runs_path / run_id
     persistence_dir.mkdir(parents=True, exist_ok=True)
+    workspace = workspace or Path.cwd()
+    started_at = utcnow_iso()
     agent = build_agent(cfg, tier=tier, condense_at=condense_at)
     conversation = _make_conversation(
-        agent, workspace or Path.cwd(), persistence_dir, max_iterations, visualize
+        agent, workspace, persistence_dir, max_iterations, visualize
     )
+
+    def _record(status: str) -> None:
+        # harness-side, after the fact, best-effort (layer doctrine: the
+        # cell never knows the ledger exists; a ledger hiccup never fails a run)
+        record_run(cfg, run_id, task, tier, str(workspace), status,
+                   persistence_dir, started_at)
+
     try:
         conversation.send_message(task)
         conversation.run()
     except KeyboardInterrupt:
+        _record("interrupted")
         return RunResult(run_id, "interrupted",
                          persistence_dir, "stopped by user; event log kept")
     except Exception as exc:
         for exc_type, kind, hint in _llm_error_hints():
             if isinstance(exc, exc_type):
+                _record(f"error:{kind}")
                 return RunResult(run_id, f"error:{kind}", persistence_dir, f"{hint} ({exc})")
+        _record("error:crash")
         raise
     status = conversation.state.execution_status.value
+    _record(status)
     return RunResult(run_id, status, persistence_dir)

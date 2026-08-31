@@ -7,6 +7,7 @@ docs/build-plan.md). This bootstrap ships the environment story:
     soma doctor      what can this box do? (config, profiles, local server)
     soma local up    run the local inference server with the canonical flags
     soma run         run one task in a proto-cell (one Conversation, PR-02)
+    soma report      read the telemetry ledger (costs per run / per brain, PR-03)
 
 The canonical flags exist because S1 taught us that without the right
 tool-call parser, a healthy model looks broken (calls arrive as text).
@@ -169,6 +170,16 @@ def soma_run(args: argparse.Namespace) -> int:
     return 0 if result.ok else 1
 
 
+def report_costs(args: argparse.Namespace) -> int:
+    from soma.config import load_config
+    from soma.telemetry import render_costs
+
+    cfg, _ = load_config()
+    print(f"ledger: {cfg.telemetry_db_path}")
+    print(render_costs(cfg, since=args.since))
+    return 0
+
+
 def local_up(args: argparse.Namespace) -> int:
     if not _apple_silicon():
         print("local tier is Apple Silicon only in v0 (ADR-005); this box runs cloud-only.")
@@ -212,6 +223,13 @@ def main(argv: list[str] | None = None) -> int:
                      help="condense history once it exceeds N events (default: SDK 240)")
     run.add_argument("--quiet", action="store_true", help="no live event visualizer")
     run.set_defaults(fn=soma_run)
+
+    rep = sub.add_parser("report", help="read the telemetry ledger")
+    rep_sub = rep.add_subparsers(dest="report_command", required=True)
+    costs = rep_sub.add_parser("costs", help="cost per run, per brain, vs the $200/mo line")
+    costs.add_argument("--since", default=None, metavar="YYYY-MM-DD",
+                       help="only runs started on/after this date")
+    costs.set_defaults(fn=report_costs)
 
     d = sub.add_parser("doctor", help="report what this machine can do")
     d.add_argument("--port", type=int, default=DEFAULT_PORT)
