@@ -6,6 +6,7 @@ docs/build-plan.md). This bootstrap ships the environment story:
     soma init        write soma.toml (if absent) + one LLM profile per tier
     soma doctor      what can this box do? (config, profiles, local server)
     soma local up    run the local inference server with the canonical flags
+    soma run         run one task in a proto-cell (one Conversation, PR-02)
 
 The canonical flags exist because S1 taught us that without the right
 tool-call parser, a healthy model looks broken (calls arrive as text).
@@ -140,6 +141,34 @@ def doctor(args: argparse.Namespace) -> int:
     return 0
 
 
+def soma_run(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from soma.config import load_config
+    from soma.engine import run_task
+
+    cfg, _ = load_config()
+    try:
+        result = run_task(
+            args.task,
+            cfg,
+            tier=args.tier,
+            workspace=Path(args.workspace).resolve(),
+            max_iterations=args.max_iterations,
+            condense_at=args.condense_at,
+            visualize=not args.quiet,
+        )
+    except ValueError as exc:  # actionable config problems (missing tier, ...)
+        print(f"{BAD} {exc}")
+        return 2
+    mark = OK if result.ok else BAD
+    print(f"{mark} run {result.run_id}: {result.status}")
+    if result.detail:
+        print(f"  {result.detail}")
+    print(f"  bundle: {result.persistence_dir}")
+    return 0 if result.ok else 1
+
+
 def local_up(args: argparse.Namespace) -> int:
     if not _apple_silicon():
         print("local tier is Apple Silicon only in v0 (ADR-005); this box runs cloud-only.")
@@ -170,6 +199,19 @@ def main(argv: list[str] | None = None) -> int:
     ini.add_argument("--force", action="store_true",
                      help="overwrite existing profiles with config values")
     ini.set_defaults(fn=soma_init)
+
+    run = sub.add_parser("run", help="run one task in a proto-cell (one Conversation)")
+    run.add_argument("task", help="what the cell should do, in plain words")
+    run.add_argument("--tier", default="worker",
+                     help="tier profile for the agent LLM (default: worker)")
+    run.add_argument("--workspace", default=".",
+                     help="directory the cell works in (default: cwd)")
+    run.add_argument("--max-iterations", type=int, default=100,
+                     help="hard cap on agent steps (default: 100)")
+    run.add_argument("--condense-at", type=int, default=None,
+                     help="condense history once it exceeds N events (default: SDK 240)")
+    run.add_argument("--quiet", action="store_true", help="no live event visualizer")
+    run.set_defaults(fn=soma_run)
 
     d = sub.add_parser("doctor", help="report what this machine can do")
     d.add_argument("--port", type=int, default=DEFAULT_PORT)
