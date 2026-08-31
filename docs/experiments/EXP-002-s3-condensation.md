@@ -28,8 +28,8 @@ condenser = `local` profile rebadged `usage_id="condenser"` via
 
 ## Result
 
-Forced arm: **3 Condensation events** (8, 7, 7 events summarized), loop
-kept running after each. Ledger split cleanly: `local` (agent)
+Forced arm: **6 Condensation events** (forgetting 8 events, then 7 five
+times — bundle events 10/17/24/31/38/45), loop kept running after each. Ledger split cleanly: `local` (agent)
 125,321 prompt / 1,840 completion tokens; `condenser` 8,172 prompt /
 1,113 completion tokens; both cost 0.0.
 
