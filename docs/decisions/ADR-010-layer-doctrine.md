@@ -27,6 +27,10 @@ Before building, Kushal set a structural rule: each level of abstraction must be
 
 Easier: each level is testable in a box with scripted neighbors; recursion falls out of one adapter (team-behind-cell-contract); failure isolation matches the membrane. Harder: log-based task handoff costs more latency than a function call (accepted — correctness of the membrane over speed); the team-as-cell adapter is new code the subsystem-major plan didn't have.
 
+## Amendment — 2026-08-31 (Kushal, at the PR-04 spec gate)
+
+**Bounded teammate awareness.** The cell level's "no roster" is relaxed, narrowly. A cell may know **which** cells share its team: identity, archetype, availability — opaque beyond that. It may also query its **team's current goal**. Both arrive through interfaces the team exposes (provisionally `team_roster` / `team_goal` tools, membrane operations like `bd_*`). It uses the roster to initiate dialogues and the goal to ground its work in the team's broader intent. Awareness exists only while engaged in an activity, never reaches past the team, and never includes sibling internals — prompts, logs, configuration, or how they operate. Solo cells get honest empty answers; solo operation is not an error state. Cell Protocol rules C6–C8 carry the letter; the provider side belongs to `docs/protocols/team.md` (rung 2).
+
 ## Revisit when
 
 Log-only transport proves too slow for tight inner loops (measure first — the ledger will say), or the trivial succession rule mishandles a real failure mode.

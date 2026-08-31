@@ -27,11 +27,29 @@ consciously amended — never silent drift.
 - **C1.** A cell's whole world is its logs. Every fact it learns arrives as
   an event on a log it subscribes to; everything it says leaves as an event
   it emits. There is no other channel.
-- **C2.** A cell knows nothing else: no roster, no teams, no hierarchy, no
-  board beyond its own claims, no harness internals.
+- **C2.** Beyond C6–C8, a cell knows nothing else: no hierarchy above its
+  team, no other teams, no board beyond its own claims, no harness
+  internals, and no internals of any other cell — not their prompts, not
+  their logs, not their configuration, not how they operate.
 - **C3.** A cell can answer five questions from its logs alone:
   am I instantiated? (B1) · do I have a task? (T1) · is someone talking to
   me? (D1) · am I done? (N1) · what is worth remembering? (X3).
+- **C6.** *Bounded sibling awareness.* A cell may learn **which** cells
+  share its team — identity, archetype, availability, nothing more —
+  by querying an interface the **team** exposes (provisionally the
+  `team_roster` tool). Siblings are opaque: knowing one exists is the
+  full extent of knowing it. Awareness never reaches past the team
+  (ADR-010 amendment 2026-08-31).
+- **C7.** *Team-goal grounding.* A cell may query its team's current goal
+  (provisionally the `team_goal` tool) and should ground its task and
+  dialogue conduct in that broader goal, not only in its own briefing.
+- **C8.** *Engaged-only, solo-safe.* Team awareness exists only while the
+  cell is engaged in an activity. A cell with no team gets honest empty
+  answers ("no team"), and a conforming cell behaves correctly either
+  way — solo operation is not an error state. These query tools are
+  membrane operations like the `bd_*` tools (T3): provided by the layer
+  above, scripted by the conformance harness, never reimplemented by the
+  cell.
 - **C4.** *Testable:* a cell's prompt contains nothing beyond its archetype
   layers, its briefing, and digests of logs it subscribes to
   (context-content assertion). A cell-level module imports only from levels
@@ -69,7 +87,8 @@ consciously amended — never silent drift.
 
 - **D1.** A dialogue begins with an **invitation event** on a new
   `dialogue:<id>` log. From inside a task, a cell requests one with the
-  `start_dialogue` tool; the harness creates the log and invites both.
+  `start_dialogue` tool, naming a sibling it learned from the roster
+  (C6); the harness creates the log and invites both.
 - **D2.** Entering a dialogue **parks the task**: the task bead becomes
   blocked-on the dialogue bead; the scheduler stops stepping the task
   engine. Pause means: not being stepped.
@@ -135,6 +154,7 @@ neighbors, no real team, no real board where fakeable — and asserts by rule:
 | finish blocked while bead open | N1 N2 |
 | kill mid-task → resume continues, not restarts | R1 R2 X4 |
 | dialogue park/unpark + summary injection | D2 D5 (arrives rung 2) |
+| roster/goal queries: opaque identities, team goal, solo fallback | C6 C7 C8 (arrives rung 2) |
 
 v0 of the harness (PR-04) covers the rows implementable against the PR-02
 engine; D-row checks land with the dialogue engine and cite this spec.
