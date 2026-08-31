@@ -1,6 +1,6 @@
 # Cell Protocol v0
 
-*Status: DRAFT — awaiting human gate (Kushal) · governs Rung 1+ · PR-04.*
+*Status: v0 ACCEPTED — human gate passed 2026-08-31 (Kushal, incl. C6–C8 amendment) · governs Rung 1+ · PR-04.*
 *Sources of authority: [ADR-010](../decisions/ADR-010-layer-doctrine.md) (layer doctrine) · PLAN §5.2 (cell/activity model, decided 2026-08-29) · [EXP-002](../experiments/EXP-002-s3-condensation.md) (goldfish + stall findings).*
 
 Rules are numbered for citation. The conformance harness ("cell-in-a-box")

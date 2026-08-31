@@ -7,6 +7,7 @@ docs/build-plan.md). This bootstrap ships the environment story:
     soma doctor      what can this box do? (config, profiles, local server)
     soma local up    run the local inference server with the canonical flags
     soma run         run one task in a proto-cell (one Conversation, PR-02)
+    soma resume      continue a dead-but-unfinished run (Cell Protocol R1/R2)
     soma report      read the telemetry ledger (costs per run / per brain, PR-03)
 
 The canonical flags exist because S1 taught us that without the right
@@ -170,6 +171,30 @@ def soma_run(args: argparse.Namespace) -> int:
     return 0 if result.ok else 1
 
 
+def soma_resume(args: argparse.Namespace) -> int:
+    from soma.config import load_config
+    from soma.engine import resume_run
+
+    cfg, _ = load_config()
+    try:
+        result = resume_run(
+            args.run_id,
+            cfg,
+            tier=args.tier,
+            max_iterations=args.max_iterations,
+            visualize=not args.quiet,
+        )
+    except ValueError as exc:
+        print(f"{BAD} {exc}")
+        return 2
+    mark = OK if result.ok else BAD
+    print(f"{mark} resumed {result.run_id}: {result.status}")
+    if result.detail:
+        print(f"  {result.detail}")
+    print(f"  bundle: {result.persistence_dir}")
+    return 0 if result.ok else 1
+
+
 def report_costs(args: argparse.Namespace) -> int:
     from soma.config import load_config
     from soma.telemetry import render_costs
@@ -223,6 +248,14 @@ def main(argv: list[str] | None = None) -> int:
                      help="condense history once it exceeds N events (default: SDK 240)")
     run.add_argument("--quiet", action="store_true", help="no live event visualizer")
     run.set_defaults(fn=soma_run)
+
+    res = sub.add_parser("resume", help="continue a dead-but-unfinished run (R1/R2)")
+    res.add_argument("run_id", help="the runs/<run_id> bundle to continue")
+    res.add_argument("--tier", default=None,
+                     help="override the tier (default: the ledger's memory of the run)")
+    res.add_argument("--max-iterations", type=int, default=100)
+    res.add_argument("--quiet", action="store_true")
+    res.set_defaults(fn=soma_resume)
 
     rep = sub.add_parser("report", help="read the telemetry ledger")
     rep_sub = rep.add_subparsers(dest="report_command", required=True)
