@@ -35,15 +35,27 @@ kept running after each. Ledger split cleanly: `local` (agent)
 
 Surprises, both load-bearing:
 
-1. **Goldfish loop.** The agent completed the task in 4 actions, but at
-   `max_size=8` each condensation replaced its recent memory with a
-   summary that did not clearly say "task already done". It re-verified,
-   then re-created the file, and burned all 25 iterations
-   (`error`: max-iterations). Aggressive condensation converts a
-   finished task into an infinite one. The engine now refuses
-   `--condense-at < 8` (SDK invariant) but the practical floor is far
-   higher; summaries must carry completion state — a requirement for
-   the Cell Protocol's DONE design (PR-04).
+1. **Goldfish loop — and the mechanism is subtler than "summary lost
+   the done-fact".** The summaries were GOOD: every one said
+   `COMPLETED: ... PENDING: None ... No further action is required`.
+   The loop persisted anyway, for three compounding reasons visible in
+   the event log:
+   - A run only ends when the agent CALLS the `finish` tool (the clean
+     run ends exactly that way). A summary asserting "done" is context,
+     not termination.
+   - Faced with second-hand completion ("the summary says I finished")
+     instead of its own recent observations, the 30B coder model chose
+     to re-verify rather than call `finish` — and each verification
+     burst re-crossed `max_size=8` before it got there. Condensation
+     cadence outran the finish opportunity.
+   - Later summaries drifted factually: the file path lost its
+     `/e2e-ws` segment, so re-create attempts failed with "Invalid
+     `path` parameter", manufacturing genuine new uncertainty.
+   The engine refuses `--condense-at < 8` (SDK invariant) but the
+   practical floor is far higher. Requirements carried to the Cell
+   Protocol (PR-04): DONE must be a structural signal the cell emits
+   (finish/stop conditions), summaries must preserve exact facts
+   (paths!), and condensation cadence must always leave room to finish.
 2. **25-minute stall window.** A hung provider call sits behind SDK
    defaults `timeout=300s × 5 retries` before any exception. One run
    froze 13+ min on a single call while the server answered fresh
@@ -57,8 +69,10 @@ Clean arm (default 240): no condensation on a short task; run finishes.
 
 **adopt** — condenser on the local tier with its own `usage_id` is the
 standard cell wiring (zero-cost summarization, separately metered).
-Carry into PR-04: condensation summaries must preserve "what is already
-done"; never tune `max_size` low enough to outrun task completion.
+Carry into PR-04: DONE is a structural signal the cell must emit
+(finish/stop conditions), not something inferred from summaries;
+summaries must preserve exact facts; never tune `max_size` low enough
+to outrun completion.
 Cloud-agent variant (agent on `worker`, condenser local) is a
 one-command rerun once `OPENROUTER_API_KEY` is set; the mechanism does
 not depend on which tier the agent rides.
