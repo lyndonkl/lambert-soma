@@ -71,9 +71,34 @@ def test_B1_briefing_opens_task_log():
     ...
 
 
-@pytest.mark.skip(reason="C4+B3: layering + prompt-content assertion arrive PR-06")
-def test_C4_B3_prompt_contains_only_archetype_briefing_logs():
-    ...
+def test_C4_B3_system_suffix_is_core_plus_overlay_only(cfg, tmp_path, monkeypatch):
+    """B3 stable prefix + the suffix half of C4.
+
+    The system suffix is exactly archetype core + task overlay — the
+    briefing never enters it (it is the first user message, B2). The
+    log-digest half of C4 arms with the WAL (ladder PR-10).
+    """
+    from pathlib import Path
+
+    from soma.cells import TASK_MODE_OVERLAY, find_archetype, mint_agent
+
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setattr(Path, "home", lambda: fake_home)
+    proj = tmp_path / "proj"
+    agents_dir = proj / ".agents" / "agents"
+    agents_dir.mkdir(parents=True)
+    (agents_dir / "scout.md").write_text(
+        "---\nname: scout\nmodel: local\ntools: [terminal]\n---\nScout core.\n"
+    )
+    from openhands.sdk import Agent, Tool
+
+    definition = find_archetype(cfg, "scout", proj)
+    agent = mint_agent(cfg, definition)
+    base = Agent(llm=agent.llm, tools=[Tool(name="terminal")]).static_system_message
+    # the equality IS the isolation proof: base preset + core + overlay,
+    # nothing else — no briefing, no logs, no harness extras hiding in it
+    assert agent.static_system_message == f"{base}\n\nScout core.\n\n{TASK_MODE_OVERLAY}"
 
 
 # --- TASK ----------------------------------------------------------------
