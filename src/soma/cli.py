@@ -203,8 +203,11 @@ def archetypes_list(args: argparse.Namespace) -> int:
     cfg, _ = load_config()
     defs = load_archetypes(cfg)
     if not defs:
-        print(f"{BAD} no archetypes found (seeds missing?)")
-        return 1
+        print(f"{SKIP} no archetypes found — soma ships none (roles are yours).")
+        print("  add project roles at ./.agents/agents/<name>.md")
+        print("  or a personal library at ~/.agents/agents/<name>.md")
+        print("  format: docs/archetypes.md")
+        return 0
     width = max(len(d.name) for d in defs)
     for d in sorted(defs, key=lambda d: d.name):
         tools = ",".join(d.tools) or "-"

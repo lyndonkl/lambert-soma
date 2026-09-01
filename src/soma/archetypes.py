@@ -5,14 +5,15 @@ An archetype is a Markdown file with YAML frontmatter: `name`,
 named), `tools`, `skills`, and a reserved `metadata.soma_*` namespace.
 The body is the archetype core prompt (layer 1 of B3).
 
-Sources, project wins by name:
+soma ships NO roles: archetypes are the user's vocabulary (G9,
+framework-not-app). Sources, project wins by name:
   1. the project's `.agents/agents/*.md` (the SDK's own convention)
-  2. soma's packaged seeds (`src/soma/seeds/`) — worker, explorer, reviewer
+  2. the user's library at `~/.agents/agents/*.md`
 
-A project file with a seed's name deliberately shadows the seed: that
-is how users customize the stock roles (G9, framework-not-app).
-Validation is pre-flight: it catches at `soma archetypes list` time
-what the SDK factory would otherwise throw at cell-mint time.
+A project file sharing a user-library name deliberately shadows it:
+per-project customization of a personal role. Validation is
+pre-flight: it catches at `soma archetypes list` time what the SDK
+factory would otherwise throw at cell-mint time.
 """
 
 from __future__ import annotations
@@ -21,8 +22,7 @@ from pathlib import Path
 
 from soma.config import SomaConfig
 
-SEEDS_DIR = Path(__file__).parent / "seeds"
-PROJECT_AGENTS_SUBDIR = Path(".agents") / "agents"
+AGENTS_SUBDIR = Path(".agents") / "agents"
 # The reserved namespace, v0: unknown soma_* keys are validation errors
 # so future keys can be introduced without colliding with user data.
 KNOWN_SOMA_META_KEYS = {"soma_version"}
@@ -41,13 +41,11 @@ def _load_dir(agents_dir: Path, level: str, cfg: SomaConfig) -> list:
 
 
 def load_archetypes(cfg: SomaConfig, project_dir: Path | None = None) -> list:
-    """All effective archetypes: project first, seeds fill the gaps."""
-    project = _load_dir(
-        (project_dir or Path.cwd()) / PROJECT_AGENTS_SUBDIR, "project", cfg
-    )
-    seeds = _load_dir(SEEDS_DIR, "builtin", cfg)
+    """All effective archetypes: project first, user library fills the gaps."""
+    project = _load_dir((project_dir or Path.cwd()) / AGENTS_SUBDIR, "project", cfg)
+    user = _load_dir(Path.home() / AGENTS_SUBDIR, "user", cfg)
     merged: dict[str, object] = {}
-    for definition in [*project, *seeds]:
+    for definition in [*project, *user]:
         merged.setdefault(definition.name, definition)
     return list(merged.values())
 
@@ -68,23 +66,21 @@ def check_archetypes(
             n.removesuffix(".json") for n in LLMProfileStore(store_path).list()
         }
 
-    project = _load_dir(
-        (project_dir or Path.cwd()) / PROJECT_AGENTS_SUBDIR, "project", cfg
-    )
-    seeds = _load_dir(SEEDS_DIR, "builtin", cfg)
+    project = _load_dir((project_dir or Path.cwd()) / AGENTS_SUBDIR, "project", cfg)
+    user = _load_dir(Path.home() / AGENTS_SUBDIR, "user", cfg)
     checks: list[tuple[bool | None, str]] = []
 
-    # collisions within one source are errors; project shadowing a seed is a feature
-    for level, defs in (("project", project), ("builtin", seeds)):
+    # collisions within one source are errors; project shadowing user is a feature
+    for level, defs in (("project", project), ("user", user)):
         seen: set[str] = set()
         for d in defs:
             if d.name in seen:
                 checks.append((False, f"{level} archetypes: duplicate name '{d.name}'"))
             seen.add(d.name)
-    seed_names = {d.name for d in seeds}
+    user_names = {d.name for d in user}
     for d in project:
-        if d.name in seed_names:
-            checks.append((None, f"project '{d.name}' shadows the seed archetype"))
+        if d.name in user_names:
+            checks.append((None, f"project '{d.name}' shadows your user-library archetype"))
 
     for d in load_archetypes(cfg, project_dir):
         if d.model in ("", "inherit"):
