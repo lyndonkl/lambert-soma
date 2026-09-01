@@ -8,6 +8,7 @@ docs/build-plan.md). This bootstrap ships the environment story:
     soma local up    run the local inference server with the canonical flags
     soma run         run one task in a proto-cell (one Conversation, PR-02)
     soma resume      continue a dead-but-unfinished run (Cell Protocol R1/R2)
+    soma archetypes  list + validate the available roles (PR-05, ADR-006)
     soma report      read the telemetry ledger (costs per run / per brain, PR-03)
 
 The canonical flags exist because S1 taught us that without the right
@@ -195,6 +196,29 @@ def soma_resume(args: argparse.Namespace) -> int:
     return 0 if result.ok else 1
 
 
+def archetypes_list(args: argparse.Namespace) -> int:
+    from soma.archetypes import check_archetypes, load_archetypes
+    from soma.config import load_config
+
+    cfg, _ = load_config()
+    defs = load_archetypes(cfg)
+    if not defs:
+        print(f"{BAD} no archetypes found (seeds missing?)")
+        return 1
+    width = max(len(d.name) for d in defs)
+    for d in sorted(defs, key=lambda d: d.name):
+        tools = ",".join(d.tools) or "-"
+        print(f"  {d.name:<{width}}  [{d.level:<7}]  tier={d.model:<10}  tools={tools}")
+        print(f"  {'':<{width}}  {d.description}")
+    print()
+    failed = False
+    for ok_flag, message in check_archetypes(cfg):
+        mark = OK if ok_flag else (SKIP if ok_flag is None else BAD)
+        failed = failed or ok_flag is False
+        print(f"{mark} {message}")
+    return 1 if failed else 0
+
+
 def report_costs(args: argparse.Namespace) -> int:
     from soma.config import load_config
     from soma.telemetry import render_costs
@@ -248,6 +272,11 @@ def main(argv: list[str] | None = None) -> int:
                      help="condense history once it exceeds N events (default: SDK 240)")
     run.add_argument("--quiet", action="store_true", help="no live event visualizer")
     run.set_defaults(fn=soma_run)
+
+    arch = sub.add_parser("archetypes", help="list + validate available roles")
+    arch_sub = arch.add_subparsers(dest="archetypes_command", required=True)
+    arch_list = arch_sub.add_parser("list", help="every archetype, its tier, and validation")
+    arch_list.set_defaults(fn=archetypes_list)
 
     res = sub.add_parser("resume", help="continue a dead-but-unfinished run (R1/R2)")
     res.add_argument("run_id", help="the runs/<run_id> bundle to continue")
