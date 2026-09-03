@@ -156,6 +156,7 @@ def soma_run(args: argparse.Namespace) -> int:
             args.task,
             cfg,
             tier=args.tier,
+            archetype=args.archetype,
             workspace=Path(args.workspace).resolve(),
             max_iterations=args.max_iterations,
             condense_at=args.condense_at,
@@ -267,6 +268,8 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("task", help="what the cell should do, in plain words")
     run.add_argument("--tier", default="worker",
                      help="tier profile for the agent LLM (default: worker)")
+    run.add_argument("--as", dest="archetype", default=None, metavar="NAME",
+                     help="run as this archetype (see: soma archetypes list)")
     run.add_argument("--workspace", default=".",
                      help="directory the cell works in (default: cwd)")
     run.add_argument("--max-iterations", type=int, default=100,

@@ -63,14 +63,11 @@ def _load_tier(cfg: SomaConfig, name: str):
         ) from exc
 
 
-def build_agent(cfg: SomaConfig, tier: str = "worker", condense_at: int | None = None):
-    """Agent on the named tier; condenser always on the local tier."""
-    from openhands.sdk import Agent, LLMSummarizingCondenser, Tool
-    from openhands.tools import register_default_tools
+def build_condenser(cfg: SomaConfig, condense_at: int | None = None):
+    """The standard cell condenser: local tier, own ledger name, clamped."""
+    from openhands.sdk import LLMSummarizingCondenser
 
-    register_default_tools(enable_browser=False)
     clamp = {"timeout": ENGINE_LLM_TIMEOUT, "num_retries": ENGINE_LLM_RETRIES}
-    agent_llm = _load_tier(cfg, tier).model_copy(update=clamp)
     condenser_llm = _load_tier(cfg, "local").model_copy(
         update={"usage_id": "condenser", **clamp}
     )
@@ -80,10 +77,21 @@ def build_agent(cfg: SomaConfig, tier: str = "worker", condense_at: int | None =
         if condense_at < 8:
             raise ValueError("--condense-at must be at least 8 (SDK condenser minimum)")
         condenser_args["max_size"] = condense_at
+    return LLMSummarizingCondenser(**condenser_args)
+
+
+def build_agent(cfg: SomaConfig, tier: str = "worker", condense_at: int | None = None):
+    """The identity-less proto-cell agent on the named tier."""
+    from openhands.sdk import Agent, Tool
+    from openhands.tools import register_default_tools
+
+    register_default_tools(enable_browser=False)
+    clamp = {"timeout": ENGINE_LLM_TIMEOUT, "num_retries": ENGINE_LLM_RETRIES}
+    agent_llm = _load_tier(cfg, tier).model_copy(update=clamp)
     return Agent(
         llm=agent_llm,
         tools=[Tool(name="terminal"), Tool(name="file_editor")],
-        condenser=LLMSummarizingCondenser(**condenser_args),
+        condenser=build_condenser(cfg, condense_at),
     )
 
 
@@ -142,13 +150,19 @@ def run_task(
     task: str,
     cfg: SomaConfig,
     tier: str = "worker",
+    archetype: str | None = None,
     workspace: Path | None = None,
     run_id: str | None = None,
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
     condense_at: int | None = None,
     visualize: bool = True,
 ) -> RunResult:
-    """Run one task to a terminal status. The run bundle always survives."""
+    """Run one task to a terminal status. The run bundle always survives.
+
+    With `archetype`, the agent is minted from that role file (its
+    `model:` tier wins over the `tier` argument; ledger meters it as
+    `agent:<name>`). Without it, the identity-less proto-cell runs.
+    """
     from soma.telemetry import record_run, utcnow_iso
 
     run_id = run_id or new_run_id()
@@ -156,7 +170,14 @@ def run_task(
     persistence_dir.mkdir(parents=True, exist_ok=True)
     workspace = workspace or Path.cwd()
     started_at = utcnow_iso()
-    agent = build_agent(cfg, tier=tier, condense_at=condense_at)
+    if archetype is not None:
+        from soma.cells import find_archetype, mint_agent
+
+        definition = find_archetype(cfg, archetype, project_dir=workspace)
+        agent = mint_agent(cfg, definition, condense_at=condense_at)
+        tier = definition.model  # the ledger records the seat actually used
+    else:
+        agent = build_agent(cfg, tier=tier, condense_at=condense_at)
     conversation = _make_conversation(
         agent, workspace, persistence_dir, max_iterations, visualize
     )
