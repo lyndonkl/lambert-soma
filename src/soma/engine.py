@@ -30,6 +30,19 @@ DEFAULT_MAX_ITERATIONS = 100
 # ~25 minutes. A proto-cell should fail typed and fast instead (error:timeout).
 ENGINE_LLM_TIMEOUT = 120
 ENGINE_LLM_RETRIES = 2
+# Uncapped max_tokens asks the provider to pre-authorize the model's full
+# output limit (384K on some) against your balance; OpenRouter answers 402.
+ENGINE_MAX_OUTPUT_TOKENS = 16384
+
+
+def clamp_llm(llm):
+    """Engine safety clamps for any LLM: fail fast, bounded output."""
+    update: dict[str, Any] = {
+        "timeout": ENGINE_LLM_TIMEOUT, "num_retries": ENGINE_LLM_RETRIES,
+    }
+    if llm.max_output_tokens is None:
+        update["max_output_tokens"] = ENGINE_MAX_OUTPUT_TOKENS
+    return llm.model_copy(update=update)
 
 
 @dataclass
@@ -67,9 +80,8 @@ def build_condenser(cfg: SomaConfig, condense_at: int | None = None):
     """The standard cell condenser: local tier, own ledger name, clamped."""
     from openhands.sdk import LLMSummarizingCondenser
 
-    clamp = {"timeout": ENGINE_LLM_TIMEOUT, "num_retries": ENGINE_LLM_RETRIES}
-    condenser_llm = _load_tier(cfg, "local").model_copy(
-        update={"usage_id": "condenser", **clamp}
+    condenser_llm = clamp_llm(_load_tier(cfg, "local")).model_copy(
+        update={"usage_id": "condenser"}
     )
     condenser_args: dict[str, Any] = {"llm": condenser_llm}
     if condense_at is not None:
@@ -86,8 +98,7 @@ def build_agent(cfg: SomaConfig, tier: str = "worker", condense_at: int | None =
     from openhands.tools import register_default_tools
 
     register_default_tools(enable_browser=False)
-    clamp = {"timeout": ENGINE_LLM_TIMEOUT, "num_retries": ENGINE_LLM_RETRIES}
-    agent_llm = _load_tier(cfg, tier).model_copy(update=clamp)
+    agent_llm = clamp_llm(_load_tier(cfg, tier))
     return Agent(
         llm=agent_llm,
         tools=[Tool(name="terminal"), Tool(name="file_editor")],
@@ -146,6 +157,57 @@ def _llm_error_hints():
     )
 
 
+_STATUS_HINTS = {
+    401: ("auth", "credentials rejected — check the key in the tier profile (soma init --force)"),
+    403: ("auth", "provider refused the key — check the key in the tier profile"),
+    402: ("credits", ("provider balance too low for this request — add credits, "
+                      "or lower ENGINE_MAX_OUTPUT_TOKENS")),
+    408: ("timeout", "provider timed out — transient, retry"),
+    429: ("rate-limit", "provider rate limit — wait and retry, or repoint the tier"),
+}
+
+
+def _short(exc: BaseException, limit: int = 240) -> str:
+    text = " ".join(str(exc).split())
+    return text if len(text) <= limit else text[:limit] + "…"
+
+
+def classify_llm_error(exc: BaseException) -> tuple[str, str] | None:
+    """Map an exception — walking its cause chain — to (kind, hint), or None.
+
+    The SDK wraps provider failures in ConversationRunError and litellm
+    errors carry a status_code; unwrapping keeps verdicts typed instead
+    of surfacing as stack traces.
+    """
+    chain: list[BaseException] = []
+    cur: BaseException | None = exc
+    while cur is not None and cur not in chain:
+        chain.append(cur)
+        cur = cur.__cause__ or cur.__context__
+    hints = _llm_error_hints()
+    for e in chain:
+        for exc_type, kind, hint in hints:
+            if isinstance(e, exc_type):
+                return kind, hint
+    for e in chain:
+        code = getattr(e, "status_code", None)
+        if code in _STATUS_HINTS:
+            return _STATUS_HINTS[code]
+        if isinstance(code, int) and code >= 500:
+            return "unavailable", "provider unavailable — transient, retry or repoint the tier"
+        name = type(e).__name__
+        text = str(e)
+        if "Timeout" in name:
+            return _STATUS_HINTS[408]
+        if "RateLimit" in name:
+            return _STATUS_HINTS[429]
+        if "Authentication" in name:
+            return _STATUS_HINTS[401]
+        if "requires more credits" in text or '"code":402' in text:
+            return _STATUS_HINTS[402]
+    return None
+
+
 def run_task(
     task: str,
     cfg: SomaConfig,
@@ -197,10 +259,12 @@ def run_task(
         return RunResult(run_id, "interrupted",
                          persistence_dir, "stopped by user; event log kept")
     except Exception as exc:
-        for exc_type, kind, hint in _llm_error_hints():
-            if isinstance(exc, exc_type):
-                _record(f"error:{kind}")
-                return RunResult(run_id, f"error:{kind}", persistence_dir, f"{hint} ({exc})")
+        classified = classify_llm_error(exc)
+        if classified:
+            kind, hint = classified
+            _record(f"error:{kind}")
+            return RunResult(run_id, f"error:{kind}", persistence_dir,
+                             f"{hint} ({_short(exc)})")
         _record("error:crash")
         raise
     status = conversation.state.execution_status.value
@@ -257,10 +321,12 @@ def resume_run(
         return RunResult(run_id, "interrupted",
                          persistence_dir, "stopped by user; event log kept")
     except Exception as exc:
-        for exc_type, kind, hint in _llm_error_hints():
-            if isinstance(exc, exc_type):
-                _record(f"error:{kind}")
-                return RunResult(run_id, f"error:{kind}", persistence_dir, f"{hint} ({exc})")
+        classified = classify_llm_error(exc)
+        if classified:
+            kind, hint = classified
+            _record(f"error:{kind}")
+            return RunResult(run_id, f"error:{kind}", persistence_dir,
+                             f"{hint} ({_short(exc)})")
         _record("error:crash")
         raise
     status = conversation.state.execution_status.value

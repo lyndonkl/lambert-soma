@@ -85,6 +85,23 @@ def soma_init(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cloud_keys_present(cfg) -> bool:
+    """Cloud readiness comes from keys baked into profiles, not the shell env."""
+    from openhands.sdk import LLMProfileStore
+
+    if not cfg.profile_store_path.is_dir():
+        return False
+    store = LLMProfileStore(cfg.profile_store_path)
+    for name in cfg.tiers:
+        try:
+            llm = store.load(name)
+        except Exception:  # noqa: BLE001, S112 — doctor must survive any bad profile file
+            continue
+        if llm.api_key is not None and llm.api_key.get_secret_value():
+            return True
+    return False
+
+
 def doctor(args: argparse.Namespace) -> int:
     from soma.config import load_config
     from soma.profiles import check_profiles
@@ -129,9 +146,10 @@ def doctor(args: argparse.Namespace) -> int:
         hint = "soma local up" if _local_extra_installed() else "cloud-only mode"
         print(f"{SKIP} no local server on :{args.port} ({hint})")
 
-    cloud_ready = bool(os.environ.get("OPENROUTER_API_KEY"))
+    cloud_ready = _cloud_keys_present(cfg) or bool(os.environ.get("OPENROUTER_API_KEY"))
     mark = OK if cloud_ready else BAD
-    print(f"{mark} OPENROUTER_API_KEY {'set' if cloud_ready else 'missing'} — WORKER/LEAD tiers")
+    print(f"{mark} cloud tiers {'have credentials (profiles)' if cloud_ready else 'have no key'}"
+          f"{'' if cloud_ready else ' — export OPENROUTER_API_KEY, then: soma init --force'}")
 
     if local_ready and cloud_ready:
         print("verdict: all tiers available")

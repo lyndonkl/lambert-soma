@@ -97,3 +97,45 @@ def test_run_task_reraises_non_llm_errors(cfg, monkeypatch):
     monkeypatch.setattr("soma.engine._make_conversation", lambda *a, **k: stub)
     with pytest.raises(RuntimeError, match="boom"):
         run_task("t", cfg, visualize=False)
+
+
+def test_clamp_llm_caps_output_tokens_unless_set():
+    from openhands.sdk import LLM
+
+    from soma.engine import ENGINE_MAX_OUTPUT_TOKENS, clamp_llm
+
+    bare = LLM(usage_id="x", model="openrouter/a/b")
+    assert clamp_llm(bare).max_output_tokens == ENGINE_MAX_OUTPUT_TOKENS
+    explicit = LLM(usage_id="x", model="openrouter/a/b", max_output_tokens=512)
+    assert clamp_llm(explicit).max_output_tokens == 512
+
+
+class _Wrapped(Exception):
+    pass
+
+
+class _Provider(Exception):
+    def __init__(self, code):
+        super().__init__(f"provider said {code}")
+        self.status_code = code
+
+
+def test_classify_walks_cause_chain_by_status():
+    from soma.engine import classify_llm_error
+
+    wrapped = _Wrapped("Conversation run failed")
+    wrapped.__cause__ = _Provider(402)
+    assert classify_llm_error(wrapped)[0] == "credits"
+    assert classify_llm_error(_Provider(401))[0] == "auth"
+    assert classify_llm_error(_Provider(503))[0] == "unavailable"
+    assert classify_llm_error(RuntimeError("boom")) is None
+
+
+def test_run_task_maps_wrapped_provider_error(cfg, monkeypatch):
+    wrapped = _Wrapped("Conversation run failed")
+    wrapped.__cause__ = _Provider(402)
+    stub = _StubConversation(exc=wrapped)
+    monkeypatch.setattr("soma.engine._make_conversation", lambda *a, **k: stub)
+    result = run_task("t", cfg, visualize=False)
+    assert result.status == "error:credits"
+    assert "add credits" in (result.detail or "")

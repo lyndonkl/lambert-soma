@@ -47,6 +47,17 @@ Side observation, twice: cells wrote to `/tmp` despite the cwd
 anchor. Workspace containment is prompt-level only until the
 unattended/Docker rung — carried as a known gap.
 
+**Cloud arm (2026-09-03, once OPENROUTER credits existed):** same two
+roles, same task, `model: worker` (DeepSeek V4 Pro). Adherence **2/2
+exact** — `HELLO FROM SOMA` ($0.0078) and `hello from soma` ($0.0051),
+first try, in-workspace, one clean finish each. The local tier's
+noisiness was the model, not the design. Side finding: uncapped
+`max_tokens` (384K) made OpenRouter pre-authorize the model's full
+output limit and refuse with 402 on a small balance; the engine now
+clamps `max_output_tokens` to 16384 unless a profile sets it, and
+maps wrapped provider errors (402 credits, 401 auth, 429, 5xx) to
+typed verdicts instead of stack traces.
+
 ## Decision
 
 **adopt static composition** in `mint_agent` — it is also the better
