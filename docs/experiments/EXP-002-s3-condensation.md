@@ -59,9 +59,9 @@ Surprises, both load-bearing:
 2. **25-minute stall window.** A hung provider call sits behind SDK
    defaults `timeout=300s × 5 retries` before any exception. One run
    froze 13+ min on a single call while the server answered fresh
-   probes. The engine now clamps both LLMs to `timeout=120s,
-   num_retries=2`, so a dead call surfaces as typed `error:timeout` in
-   minutes.
+   probes. Limits are now per tier in soma.toml (local default
+   120 s / 2 retries; cloud 300 s / 10), so a dead local call surfaces
+   as typed `error:timeout` in minutes while cloud replies get room.
 
 Clean arm (default 240): no condensation on a short task; run finishes.
 
