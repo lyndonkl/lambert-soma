@@ -81,7 +81,10 @@ class BdRunner:
             cwd=self.board_dir, capture_output=True, text=True, timeout=_BD_TIMEOUT,
             check=False,
         )
-        if proc.returncode != 0 or not (self.board_dir / ".beads").is_dir():
+        # Trust the artifact, not the exit code: bd init also tries to `git init`
+        # the directory and can exit non-zero on git template trouble while the
+        # board itself is complete and usable (seen live, EXP-004).
+        if not (self.board_dir / ".beads").is_dir():
             raise RuntimeError(
                 f"bd init failed in {self.board_dir}: {proc.stderr.strip()[:200]}"
             )
