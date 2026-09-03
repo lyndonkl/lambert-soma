@@ -90,3 +90,17 @@ def test_env_var_override(tmp_path, monkeypatch):
     cfg, path = load_config(start=tmp_path)
     assert path == special
     assert cfg.runs_dir == "env-runs"
+
+
+def test_tier_limits_parse_and_default(tmp_path, monkeypatch):
+    monkeypatch.delenv(CONFIG_ENV_VAR, raising=False)
+    (tmp_path / "soma.toml").write_text(
+        "[lead]\nmodel = 'openrouter/m/k'\nmax_output_tokens = 500000\ntimeout = 600\n"
+        "[local]\nretries = 1\n"
+    )
+    cfg, _ = load_config(start=tmp_path)
+    assert cfg.tiers["lead"].effective_limits == {
+        "max_output_tokens": 500000, "timeout": 600, "retries": 10}  # retries defaulted
+    assert cfg.tiers["worker"].effective_limits == {
+        "max_output_tokens": 65536, "timeout": 2400, "retries": 10}
+    assert cfg.local.effective_limits == {"max_output_tokens": 16384, "timeout": 600, "retries": 1}

@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from soma.config import SomaConfig
-from soma.engine import ENGINE_LLM_RETRIES, ENGINE_LLM_TIMEOUT
+from soma.engine import clamp_llm
 
 # Task-mode overlay (B3 layer 2). Harness-owned protocol text, not role
 # content: the duties every task cell has regardless of archetype.
@@ -112,11 +112,7 @@ def mint_agent(cfg: SomaConfig, definition, condense_at: int | None = None,
             f"archetype '{definition.name}': tier '{definition.model}' has no "
             f"profile at {cfg.profile_store_path} ({exc}) — run: soma init"
         ) from exc
-    llm = llm.model_copy(update={
-        "usage_id": f"agent:{definition.name}",
-        "timeout": ENGINE_LLM_TIMEOUT,
-        "num_retries": ENGINE_LLM_RETRIES,
-    })
+    llm = clamp_llm(llm).model_copy(update={"usage_id": f"agent:{definition.name}"})
     tools = [Tool(name=n) for n in definition.tools]
     skills = _resolve_skills(definition, work_dir)
     base = Agent(llm=llm, tools=tools).static_system_message

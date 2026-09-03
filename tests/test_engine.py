@@ -53,10 +53,10 @@ def test_build_agent_wiring(cfg):
     assert (agent.condenser.llm.input_cost_per_token or 0) == 0
     assert agent.condenser.max_size == 8
     assert {t.name for t in agent.tools} == {"terminal", "file_editor"}
-    # hung providers must fail typed and fast, not sit on SDK defaults (300s x 5)
-    for llm in (agent.llm, agent.condenser.llm):
-        assert llm.timeout == 120
-        assert llm.num_retries == 2
+    # per-tier limits baked by soma init (soma.toml): cloud vs local defaults
+    assert (agent.llm.timeout, agent.llm.num_retries, agent.llm.max_output_tokens) == (2400, 10, 65536)
+    assert (agent.condenser.llm.timeout, agent.condenser.llm.num_retries) == (600, 2)
+    assert agent.condenser.llm.max_output_tokens == 16384
 
 
 def test_missing_tier_is_actionable(cfg):
@@ -97,3 +97,47 @@ def test_run_task_reraises_non_llm_errors(cfg, monkeypatch):
     monkeypatch.setattr("soma.engine._make_conversation", lambda *a, **k: stub)
     with pytest.raises(RuntimeError, match="boom"):
         run_task("t", cfg, visualize=False)
+
+
+def test_clamp_llm_fills_missing_cap_only():
+    from openhands.sdk import LLM
+
+    from soma.config import CLOUD_LIMITS
+    from soma.engine import clamp_llm
+
+    bare = LLM(usage_id="x", model="openrouter/a/b")  # a hand-added profile
+    assert clamp_llm(bare).max_output_tokens == CLOUD_LIMITS["max_output_tokens"]
+    explicit = LLM(usage_id="x", model="openrouter/a/b", max_output_tokens=512, timeout=7)
+    clamped = clamp_llm(explicit)
+    assert (clamped.max_output_tokens, clamped.timeout) == (512, 7)  # profile wins
+
+
+class _Wrapped(Exception):
+    pass
+
+
+class _Provider(Exception):
+    def __init__(self, code):
+        super().__init__(f"provider said {code}")
+        self.status_code = code
+
+
+def test_classify_walks_cause_chain_by_status():
+    from soma.engine import classify_llm_error
+
+    wrapped = _Wrapped("Conversation run failed")
+    wrapped.__cause__ = _Provider(402)
+    assert classify_llm_error(wrapped)[0] == "credits"
+    assert classify_llm_error(_Provider(401))[0] == "auth"
+    assert classify_llm_error(_Provider(503))[0] == "unavailable"
+    assert classify_llm_error(RuntimeError("boom")) is None
+
+
+def test_run_task_maps_wrapped_provider_error(cfg, monkeypatch):
+    wrapped = _Wrapped("Conversation run failed")
+    wrapped.__cause__ = _Provider(402)
+    stub = _StubConversation(exc=wrapped)
+    monkeypatch.setattr("soma.engine._make_conversation", lambda *a, **k: stub)
+    result = run_task("t", cfg, visualize=False)
+    assert result.status == "error:credits"
+    assert "add credits" in (result.detail or "")

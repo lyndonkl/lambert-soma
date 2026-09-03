@@ -29,7 +29,16 @@ def tier_names(cfg: SomaConfig) -> tuple[str, ...]:
     return ("local", *cfg.tiers)
 
 
-def _build_llm(name: str, cfg: SomaConfig, env: Mapping[str, str]):
+def _limit_kwargs(limits: Mapping[str, int]) -> dict:
+    return {
+        "max_output_tokens": limits["max_output_tokens"],
+        "timeout": limits["timeout"],
+        "num_retries": limits["retries"],
+    }
+
+
+def _build_llm(name: str, cfg: SomaConfig, env: Mapping[str, str],
+               existing_key: str | None = None):
     from openhands.sdk import LLM  # lazy: keeps `soma --help` fast
 
     if name == "local":
@@ -40,13 +49,26 @@ def _build_llm(name: str, cfg: SomaConfig, env: Mapping[str, str]):
             api_key=SecretStr("not-needed"),
             input_cost_per_token=0.0,
             output_cost_per_token=0.0,
+            **_limit_kwargs(cfg.local.effective_limits),
         )
-    key = env.get(CLOUD_KEY_ENV)
+    # env wins; else keep the key a previous init baked in (a --force from a
+    # shell without the env var must never strip credentials)
+    key = env.get(CLOUD_KEY_ENV) or existing_key
+    tier = cfg.tiers[name]
     return LLM(
         usage_id=name,
-        model=cfg.tiers[name].model,
+        model=tier.model,
         api_key=SecretStr(key) if key else None,
+        **_limit_kwargs(tier.effective_limits),
     )
+
+
+def _existing_key(store, name: str) -> str | None:
+    try:
+        llm = store.load(name)
+    except Exception:  # noqa: BLE001 — a bad old profile just means no key to keep
+        return None
+    return llm.api_key.get_secret_value() if llm.api_key else None
 
 
 def bootstrap_profiles(
@@ -71,14 +93,15 @@ def bootstrap_profiles(
         if listed and not force:
             report.append(f"kept    {name} (exists; use --force to overwrite)")
             continue
-        llm = _build_llm(name, cfg, env)
+        existing_key = _existing_key(store, name) if listed else None
+        llm = _build_llm(name, cfg, env, existing_key)
         store.save(name, llm, include_secrets=True)
         verb = "rewrote" if listed else "created"
         report.append(f"{verb} {name} -> {llm.model}")
     if not env.get(CLOUD_KEY_ENV):
         report.append(
             f"warning: {CLOUD_KEY_ENV} not set — cloud tiers "
-            f"({', '.join(cfg.tiers)}) saved without a key"
+            f"({', '.join(cfg.tiers)}) keep any previously baked key, else none"
         )
     return report
 

@@ -59,11 +59,25 @@ Surprises, both load-bearing:
 2. **25-minute stall window.** A hung provider call sits behind SDK
    defaults `timeout=300s × 5 retries` before any exception. One run
    froze 13+ min on a single call while the server answered fresh
-   probes. The engine now clamps both LLMs to `timeout=120s,
-   num_retries=2`, so a dead call surfaces as typed `error:timeout` in
-   minutes.
+   probes. Limits are now per tier in soma.toml (local 600 s / 2 retries;
+   cloud seats 400-2700 s / 10, sized to a full-cap reply), so a dead local call surfaces
+   as typed `error:timeout` in minutes while cloud replies get room.
 
 Clean arm (default 240): no condensation on a short task; run finishes.
+
+**Cloud arm (2026-09-03, agent on `worker` = DeepSeek V4 Pro, condenser
+still local, `--condense-at 8`):** S3 holds — 6 Condensation events,
+ledger split `worker` 123,814 prompt / 2,770 completion tokens
+($0.034) vs `condenser` 6,357 / 298 ($0.00). And the **goldfish loop
+reproduces on a strong model**: a six-step task (echo a…e, then ls) got
+to d, condensation fired, and the agent restarted at `echo a` — six
+cycles of a/b/c until max-iterations, never reaching e. The loop is
+structural, not a weak-model artifact: at this cadence no model can
+recover "which step am I on" from the summary. This is the hard
+version of the PR-04 requirement (summaries must carry progress state;
+cadence must never outrun completion). A short haiku task on the same
+tier finished in 3 calls / 7 events — below the threshold, no
+condensation, clean finish.
 
 ## Decision
 
