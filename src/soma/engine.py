@@ -91,7 +91,8 @@ def build_condenser(cfg: SomaConfig, condense_at: int | None = None):
     return LLMSummarizingCondenser(**condenser_args)
 
 
-def build_agent(cfg: SomaConfig, tier: str = "worker", condense_at: int | None = None):
+def build_agent(cfg: SomaConfig, tier: str = "worker", condense_at: int | None = None,
+                extra_tools: list | None = None):
     """The identity-less proto-cell agent on the named tier."""
     from openhands.sdk import Agent, Tool
     from openhands.tools import register_default_tools
@@ -100,7 +101,7 @@ def build_agent(cfg: SomaConfig, tier: str = "worker", condense_at: int | None =
     agent_llm = clamp_llm(_load_tier(cfg, tier))
     return Agent(
         llm=agent_llm,
-        tools=[Tool(name="terminal"), Tool(name="file_editor")],
+        tools=[Tool(name="terminal"), Tool(name="file_editor"), *(extra_tools or [])],
         condenser=build_condenser(cfg, condense_at),
     )
 
@@ -231,15 +232,28 @@ def run_task(
     persistence_dir.mkdir(parents=True, exist_ok=True)
     workspace = workspace or Path.cwd()
     started_at = utcnow_iso()
+
+    # Kind-2 log: the run's WAL. B1 — the briefing is the first entry of the
+    # cell's task log, written by the harness before the cell takes a breath.
+    from soma.cells import new_cell_id
+    from soma.wal import open_run_wal, wal_tool_specs, write_briefing
+
+    cell_id = new_cell_id(archetype or "proto")
+    wal = open_run_wal(persistence_dir)
+    write_briefing(wal, cell_id, task)
+    extra_tools = wal_tool_specs(wal.path, cell_id)  # membrane tools, scoped to this cell
+    wal.close()
+
     if archetype is not None:
         from soma.cells import find_archetype, mint_agent
 
         definition = find_archetype(cfg, archetype, project_dir=workspace)
         agent = mint_agent(cfg, definition, condense_at=condense_at,
-                           work_dir=workspace)
+                           work_dir=workspace, extra_tools=extra_tools)
         tier = definition.model  # the ledger records the seat actually used
     else:
-        agent = build_agent(cfg, tier=tier, condense_at=condense_at)
+        agent = build_agent(cfg, tier=tier, condense_at=condense_at,
+                            extra_tools=extra_tools)
     conversation = _make_conversation(
         agent, workspace, persistence_dir, max_iterations, visualize
     )
@@ -303,7 +317,18 @@ def resume_run(
     workspace = Path(state["workspace"]["working_dir"])
     started_at = meta.get("started_at") or utcnow_iso()
     task = meta.get("task") or "(resumed; original task in event log)"
-    agent = build_agent(cfg, tier=tier, condense_at=condense_at)
+    # re-mount the WAL membrane tools if this run has a WAL (post-PR-10 bundles)
+    from soma.wal import WAL_FILENAME, WalStore, wal_tool_specs
+
+    extra_tools: list = []
+    wal_path = persistence_dir / WAL_FILENAME
+    if wal_path.is_file():
+        store = WalStore(wal_path)
+        cell_ids = [c.removeprefix("cell:") for c in store.channels() if c.startswith("cell:")]
+        store.close()
+        if cell_ids:
+            extra_tools = wal_tool_specs(wal_path, cell_ids[0])
+    agent = build_agent(cfg, tier=tier, condense_at=condense_at, extra_tools=extra_tools)
     conversation = _make_conversation(
         agent, workspace, persistence_dir, max_iterations, visualize,
         conversation_id=conversation_id,

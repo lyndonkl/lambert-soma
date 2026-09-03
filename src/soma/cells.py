@@ -84,7 +84,7 @@ def _resolve_skills(definition, work_dir: Path | None) -> list:
 
 
 def mint_agent(cfg: SomaConfig, definition, condense_at: int | None = None,
-               work_dir: Path | None = None):
+               work_dir: Path | None = None, extra_tools: list | None = None):
     """Archetype definition -> SDK Agent, per the wiring above.
 
     The layers are composed into the STATIC system prompt, not the
@@ -114,6 +114,7 @@ def mint_agent(cfg: SomaConfig, definition, condense_at: int | None = None,
         ) from exc
     llm = clamp_llm(llm).model_copy(update={"usage_id": f"agent:{definition.name}"})
     tools = [Tool(name=n) for n in definition.tools]
+    tools += list(extra_tools or [])  # harness-mounted membrane tools (e.g. WAL)
     skills = _resolve_skills(definition, work_dir)
     base = Agent(llm=llm, tools=tools).static_system_message
     agent_kwargs: dict = {}

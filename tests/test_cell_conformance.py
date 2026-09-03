@@ -66,9 +66,19 @@ def test_B2_briefing_is_engine_logs_first_message(cfg, monkeypatch):
     assert stub.sent == ["the briefing"]  # B2: opening message == briefing
 
 
-@pytest.mark.skip(reason="B1: Kind-2 task log arrives with the WAL (PR-10)")
-def test_B1_briefing_opens_task_log():
-    ...
+def test_B1_briefing_opens_task_log(cfg, monkeypatch):
+    """B1: the briefing is the FIRST entry in the cell's task log (Kind-2)."""
+    from soma.wal import WAL_FILENAME, WalStore
+
+    stub = _Stub()
+    monkeypatch.setattr("soma.engine._make_conversation", lambda *a, **k: stub)
+    result = run_task("the briefing", cfg, visualize=False)
+    store = WalStore(result.persistence_dir / WAL_FILENAME)
+    task_logs = [c for c in store.channels() if c.startswith("cell:")]
+    assert len(task_logs) == 1
+    first = store.read(task_logs[0])[0]
+    assert first["kind"] == "briefing" and first["author"] == "harness"
+    assert json.loads(first["payload"]) == {"text": "the briefing"}
 
 
 def test_C4_B3_system_suffix_is_core_plus_overlay_only(cfg, tmp_path, monkeypatch):
