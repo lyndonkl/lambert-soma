@@ -9,6 +9,7 @@ docs/build-plan.md). This bootstrap ships the environment story:
     soma run         run one task in a proto-cell (one Conversation, PR-02)
     soma resume      continue a dead-but-unfinished run (Cell Protocol R1/R2)
     soma archetypes  list + validate the available roles (PR-05, ADR-006)
+    soma skills      list + audit skills before cells mount them (PR-07)
     soma report      read the telemetry ledger (costs per run / per brain, PR-03)
 
 The canonical flags exist because S1 taught us that without the right
@@ -197,6 +198,35 @@ def soma_resume(args: argparse.Namespace) -> int:
     return 0 if result.ok else 1
 
 
+def skills_list(args: argparse.Namespace) -> int:
+    from soma.skills import load_skills
+
+    skills = load_skills()
+    if not skills:
+        print(f"{SKIP} no skills found — soma ships none (skills are yours).")
+        print("  project: ./.agents/skills/   user library: ~/.agents/skills/")
+        return 0
+    for name in sorted(skills):
+        s = skills[name]
+        kind = "agentskills" if s.is_agentskills_format else (
+            "always-on" if s.trigger is None else "triggered")
+        print(f"  {name:<24} [{kind:<11}] {s.source or '?'}")
+    return 0
+
+
+def skills_audit(args: argparse.Namespace) -> int:
+    from soma.skills import audit_skills
+
+    failed = False
+    for ok_flag, message in audit_skills():
+        mark = OK if ok_flag else (SKIP if ok_flag is None else BAD)
+        failed = failed or ok_flag is False
+        print(f"{mark} {message}")
+    print()
+    print("review the – lines; ✗ lines block mounting. (human gate, build-plan PR-07)")
+    return 1 if failed else 0
+
+
 def archetypes_list(args: argparse.Namespace) -> int:
     from soma.archetypes import check_archetypes, load_archetypes
     from soma.config import load_config
@@ -278,6 +308,13 @@ def main(argv: list[str] | None = None) -> int:
                      help="condense history once it exceeds N events (default: SDK 240)")
     run.add_argument("--quiet", action="store_true", help="no live event visualizer")
     run.set_defaults(fn=soma_run)
+
+    sk = sub.add_parser("skills", help="list + audit available skills")
+    sk_sub = sk.add_subparsers(dest="skills_command", required=True)
+    sk_list = sk_sub.add_parser("list", help="every skill, its trigger kind and source")
+    sk_list.set_defaults(fn=skills_list)
+    sk_audit = sk_sub.add_parser("audit", help="security + hygiene review (the gate artifact)")
+    sk_audit.set_defaults(fn=skills_audit)
 
     arch = sub.add_parser("archetypes", help="list + validate available roles")
     arch_sub = arch.add_subparsers(dest="archetypes_command", required=True)
