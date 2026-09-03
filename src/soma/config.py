@@ -34,8 +34,10 @@ _TIER_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 # so the cap trades reply length against the balance you keep. Timeout
 # covers the whole non-streaming reply; retries fire on transient errors
 # only (429 / 5xx / timeouts — never on auth or credit failures).
-LOCAL_LIMITS = {"max_output_tokens": 16384, "timeout": 120, "retries": 2}
-CLOUD_LIMITS = {"max_output_tokens": 131072, "timeout": 300, "retries": 10}
+# Fallbacks for tiers that omit limits; the starter soma.toml sets every
+# seat explicitly from measured model speed and ceiling (see comments there).
+LOCAL_LIMITS = {"max_output_tokens": 16384, "timeout": 600, "retries": 2}
+CLOUD_LIMITS = {"max_output_tokens": 65536, "timeout": 2400, "retries": 10}
 
 
 class TierLimits(BaseModel):
@@ -154,6 +156,10 @@ telemetry_db = "~/.soma/telemetry.db"
 model = "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
 base_url = "http://localhost:8000/v1"
 port = 8000
+# measured 30-57 tok/s (S7) · 16K ≈ 5-9 min · nothing reserved · a hung box fails fast
+max_output_tokens = 16384
+timeout = 600
+retries = 2
 
 # Cloud tiers. Every other section in this file declares one — name it
 # anything ([reviewer], [scout], ...) and archetypes bind it by name
@@ -161,29 +167,53 @@ port = 8000
 # them. Fit-first policy: pick the model each seat deserves, then let
 # the ledger report the bill. Comments give $/M tokens in/out, 2026-08.
 
-# Optional per-seat limits on any tier (defaults: cloud 131072 output
-# tokens / 300 s / 10 retries; local 16384 / 120 s / 2). OpenRouter reserves
-# max_output_tokens x output price per call, so raise the cap to match the
-# balance you keep:
-#   max_output_tokens = 500000
-#   timeout = 600
-#   retries = 10
+# Per-seat limits, derived 2026-09 from each model's ceiling (OpenRouter
+# index), measured output speed (Artificial Analysis / OpenRouter), and
+# the seat's job. Replies are non-streaming, so `timeout` must cover a
+# full-cap reply at that speed. OpenRouter reserves
+# max_output_tokens x output price BEFORE each call ("reserve" below):
+# raise a cap only as far as the balance you keep. Retries fire on
+# transient errors only (429 / 5xx / timeouts).
 
 [worker]  # agentic coding workhorse (SWE-bench Verified 80.6%)
-model = "openrouter/deepseek/deepseek-v4-pro"  # $0.42 / $0.83
+model = "openrouter/deepseek/deepseek-v4-pro"  # $0.42 / $2.05
+# ceiling 384K · ~32 tok/s · 64K covers any file write ≈ 34 min · reserve $0.13
+max_output_tokens = 65536
+timeout = 2700
+retries = 10
 
 [lead]  # judgment seat: planning, delegation, audits (thinking model)
 model = "openrouter/moonshotai/kimi-k3"  # $3.00 / $15.00
+# ceiling 944K · ~38 tok/s · 64K plan/verdict ≈ 29 min · reserve $0.98 (the pricey seat)
+max_output_tokens = 65536
+timeout = 2400
+retries = 10
 
 [analysis]  # data analysis, math-heavy interpretation (AIME26 99.2%)
-model = "openrouter/z-ai/glm-5.2"  # $1.19 / $3.74
+model = "openrouter/z-ai/glm-5.2"  # $1.19 / $3.04
+# ceiling 131K · ~68 tok/s · 64K ≈ 16 min · reserve $0.20
+max_output_tokens = 65536
+timeout = 1400
+retries = 10
 
 [summarizer]  # digests and condensation at cloud altitude
 model = "openrouter/deepseek/deepseek-v4-flash-0731"  # $0.07 / $0.18
+# ceiling 944K · ~140 tok/s · summaries are short: 32K ≈ 4 min · reserve $0.006
+max_output_tokens = 32768
+timeout = 400
+retries = 10
 
 [classifier]  # labels and routing decisions, tiny outputs
 model = "openrouter/qwen/qwen3.7-flash"  # $0.03 / $0.13
+# ceiling 64K · ~47 tok/s · labels: 4K ≈ 90 s · reserve ~$0
+max_output_tokens = 4096
+timeout = 120
+retries = 10
 
 [intent]  # request -> structured intent parsing
 model = "openrouter/z-ai/glm-5.3-flash"  # $0.08 / $0.25
+# ceiling 131K · ~47 tok/s · structured intents: 8K ≈ 3 min · reserve ~$0
+max_output_tokens = 8192
+timeout = 240
+retries = 10
 """

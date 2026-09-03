@@ -56,7 +56,7 @@ def test_mint_agent_wiring(cfg, tmp_path, home):
     agent = mint_agent(cfg, find_archetype(cfg, "scout", proj))
     assert agent.llm.usage_id == "agent:scout"
     assert agent.llm.model.startswith("openai/")  # the local tier's model
-    assert agent.llm.timeout == 120 and agent.llm.num_retries == 2
+    assert agent.llm.timeout == 600 and agent.llm.num_retries == 2
     assert {t.name for t in agent.tools} == {"terminal"}
     assert agent.condenser.llm.usage_id == "condenser"
     # layers composed into the STATIC prompt (EXP-003): base preset,

@@ -102,5 +102,5 @@ def test_tier_limits_parse_and_default(tmp_path, monkeypatch):
     assert cfg.tiers["lead"].effective_limits == {
         "max_output_tokens": 500000, "timeout": 600, "retries": 10}  # retries defaulted
     assert cfg.tiers["worker"].effective_limits == {
-        "max_output_tokens": 131072, "timeout": 300, "retries": 10}
-    assert cfg.local.effective_limits == {"max_output_tokens": 16384, "timeout": 120, "retries": 1}
+        "max_output_tokens": 65536, "timeout": 2400, "retries": 10}
+    assert cfg.local.effective_limits == {"max_output_tokens": 16384, "timeout": 600, "retries": 1}

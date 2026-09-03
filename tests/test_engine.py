@@ -54,8 +54,8 @@ def test_build_agent_wiring(cfg):
     assert agent.condenser.max_size == 8
     assert {t.name for t in agent.tools} == {"terminal", "file_editor"}
     # per-tier limits baked by soma init (soma.toml): cloud vs local defaults
-    assert (agent.llm.timeout, agent.llm.num_retries, agent.llm.max_output_tokens) == (300, 10, 131072)
-    assert (agent.condenser.llm.timeout, agent.condenser.llm.num_retries) == (120, 2)
+    assert (agent.llm.timeout, agent.llm.num_retries, agent.llm.max_output_tokens) == (2400, 10, 65536)
+    assert (agent.condenser.llm.timeout, agent.condenser.llm.num_retries) == (600, 2)
     assert agent.condenser.llm.max_output_tokens == 16384
 
 

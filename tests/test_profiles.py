@@ -128,8 +128,8 @@ def test_bootstrap_bakes_per_tier_limits(cfg):
 
     store = LLMProfileStore(cfg.profile_store_path)
     worker, local = store.load("worker"), store.load("local")
-    assert (worker.max_output_tokens, worker.timeout, worker.num_retries) == (131072, 300, 10)
-    assert (local.max_output_tokens, local.timeout, local.num_retries) == (16384, 120, 2)
+    assert (worker.max_output_tokens, worker.timeout, worker.num_retries) == (65536, 2400, 10)
+    assert (local.max_output_tokens, local.timeout, local.num_retries) == (16384, 600, 2)
 
 
 def test_force_without_env_keeps_baked_key(cfg):
