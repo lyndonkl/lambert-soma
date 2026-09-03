@@ -31,6 +31,15 @@ from soma.beads import (
 pytestmark = pytest.mark.skipif(shutil.which("bd") is None, reason="bd CLI not installed")
 
 
+@pytest.fixture(autouse=True)
+def boards_root(tmp_path, monkeypatch):
+    """Never touch the developer's real ~/.soma/boards."""
+    from soma import beads
+
+    monkeypatch.setattr(beads, "BOARDS_ROOT", tmp_path / "boards")
+    monkeypatch.setattr(beads, "_BOARDS", {})
+
+
 @pytest.fixture(scope="module")
 def runner(tmp_path_factory) -> BdRunner:
     r = BdRunner(tmp_path_factory.mktemp("board"))

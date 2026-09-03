@@ -3,9 +3,11 @@
 Cell Protocol T1/T3/T4: a cell sees only scoped board operations on its
 own claims — bd_ready, bd_claim, bd_close, bd_create (discovered-from),
 bd_note — and never queries above its scope. The board is per cell:
-`bd init` runs inside the cell's own bundle directory, so the cell's
-whole board world is a board nobody else writes to. The project's
-board is unreachable by construction, not by policy.
+`bd init` runs in ~/.soma/boards/<key>/ (keyed by the cell's bundle,
+outside any project — bd refuses to nest a board inside another bd
+workspace), so the cell's whole board world is a board nobody else
+writes to. The project's board is unreachable by construction, not
+by policy.
 
 bd 1.2.2 facts this code relies on (probed 2026-09-02, see EXP-004):
 - `--json` shapes: create/comment return an object carrying
@@ -20,9 +22,12 @@ bd 1.2.2 facts this code relies on (probed 2026-09-02, see EXP-004):
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import shutil
 import subprocess
+import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -184,17 +189,27 @@ class CellBoard:
 
 
 _BOARDS: dict[str, CellBoard] = {}
+# Boards live OUTSIDE any project: `bd init` refuses to nest inside an existing
+# bd workspace (walks up and finds the project's own .beads), and run bundles
+# sit inside the repo. Each board carries origin.txt pointing at its bundle.
+BOARDS_ROOT = Path(os.environ.get("SOMA_BOARDS_ROOT", "~/.soma/boards")).expanduser()
+
+
+def board_dir_for(persistence_dir: str | Path | None) -> Path:
+    if persistence_dir:
+        key = hashlib.sha256(str(Path(persistence_dir).resolve()).encode()).hexdigest()[:12]
+    else:
+        key = f"ephemeral-{uuid.uuid4().hex[:8]}"
+    return BOARDS_ROOT / key
 
 
 def board_for(persistence_dir: str | Path | None) -> CellBoard:
     """One CellBoard per conversation, keyed by its bundle dir; lazy bootstrap."""
-    import tempfile
-
-    key = str(Path(persistence_dir).resolve()) if persistence_dir else "<ephemeral>"
+    key = str(Path(persistence_dir).resolve()) if persistence_dir else f"<{uuid.uuid4()}>"
     if key not in _BOARDS:
-        base = Path(persistence_dir) if persistence_dir else Path(tempfile.mkdtemp())
-        runner = BdRunner(base / "board")
+        runner = BdRunner(board_dir_for(persistence_dir))
         runner.bootstrap()
+        (runner.board_dir / "origin.txt").write_text(f"{persistence_dir or '(ephemeral)'}\n")
         _BOARDS[key] = CellBoard(runner)
     return _BOARDS[key]
 
