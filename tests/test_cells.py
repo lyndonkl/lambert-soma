@@ -57,7 +57,11 @@ def test_mint_agent_wiring(cfg, tmp_path, home):
     assert agent.llm.usage_id == "agent:scout"
     assert agent.llm.model.startswith("openai/")  # the local tier's model
     assert agent.llm.timeout == 600 and agent.llm.num_retries == 2
-    assert {t.name for t in agent.tools} == {"terminal"}
+    names = {t.name for t in agent.tools}
+    assert "terminal" in names and "file_editor" not in names  # the role's own tools
+    from soma.beads import BEADS_TOOL_NAMES
+
+    assert set(BEADS_TOOL_NAMES) <= names  # every cell gets its scoped board tools (T3)
     assert agent.condenser.llm.usage_id == "condenser"
     # layers composed into the STATIC prompt (EXP-003): base preset,
     # then core + overlay as the archetype-stable tail
