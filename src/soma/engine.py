@@ -174,7 +174,8 @@ def run_task(
         from soma.cells import find_archetype, mint_agent
 
         definition = find_archetype(cfg, archetype, project_dir=workspace)
-        agent = mint_agent(cfg, definition, condense_at=condense_at)
+        agent = mint_agent(cfg, definition, condense_at=condense_at,
+                           work_dir=workspace)
         tier = definition.model  # the ledger records the seat actually used
     else:
         agent = build_agent(cfg, tier=tier, condense_at=condense_at)

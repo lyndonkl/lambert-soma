@@ -66,7 +66,25 @@ def layered_suffix(definition) -> str:
     return f"{definition.system_prompt}\n\n{TASK_MODE_OVERLAY}"
 
 
-def mint_agent(cfg: SomaConfig, definition, condense_at: int | None = None):
+def _resolve_skills(definition, work_dir: Path | None) -> list:
+    """Names from the archetype's `skills:` list -> Skill objects, pre-flight."""
+    if not definition.skills:
+        return []
+    from soma.skills import load_skills
+
+    available = load_skills(work_dir)
+    missing = [n for n in definition.skills if n not in available]
+    if missing:
+        have = ", ".join(sorted(available)) or "none found"
+        raise ValueError(
+            f"archetype '{definition.name}': unknown skills {missing} "
+            f"(available: {have}) — see: soma skills list"
+        )
+    return [available[n] for n in definition.skills]
+
+
+def mint_agent(cfg: SomaConfig, definition, condense_at: int | None = None,
+               work_dir: Path | None = None):
     """Archetype definition -> SDK Agent, per the wiring above.
 
     The layers are composed into the STATIC system prompt, not the
@@ -100,10 +118,17 @@ def mint_agent(cfg: SomaConfig, definition, condense_at: int | None = None):
         "num_retries": ENGINE_LLM_RETRIES,
     })
     tools = [Tool(name=n) for n in definition.tools]
+    skills = _resolve_skills(definition, work_dir)
     base = Agent(llm=llm, tools=tools).static_system_message
+    agent_kwargs: dict = {}
+    if skills:
+        from openhands.sdk import AgentContext
+
+        agent_kwargs["agent_context"] = AgentContext(skills=skills)
     return Agent(
         llm=llm,
         tools=tools,
         condenser=build_condenser(cfg, condense_at),
         system_prompt=f"{base}\n\n{layered_suffix(definition)}",
+        **agent_kwargs,
     )
