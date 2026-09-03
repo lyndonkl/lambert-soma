@@ -53,10 +53,10 @@ def test_build_agent_wiring(cfg):
     assert (agent.condenser.llm.input_cost_per_token or 0) == 0
     assert agent.condenser.max_size == 8
     assert {t.name for t in agent.tools} == {"terminal", "file_editor"}
-    # hung providers must fail typed and fast, not sit on SDK defaults (300s x 5)
-    for llm in (agent.llm, agent.condenser.llm):
-        assert llm.timeout == 120
-        assert llm.num_retries == 2
+    # per-tier limits baked by soma init (soma.toml): cloud vs local defaults
+    assert (agent.llm.timeout, agent.llm.num_retries, agent.llm.max_output_tokens) == (300, 10, 131072)
+    assert (agent.condenser.llm.timeout, agent.condenser.llm.num_retries) == (120, 2)
+    assert agent.condenser.llm.max_output_tokens == 16384
 
 
 def test_missing_tier_is_actionable(cfg):
@@ -99,15 +99,17 @@ def test_run_task_reraises_non_llm_errors(cfg, monkeypatch):
         run_task("t", cfg, visualize=False)
 
 
-def test_clamp_llm_caps_output_tokens_unless_set():
+def test_clamp_llm_fills_missing_cap_only():
     from openhands.sdk import LLM
 
-    from soma.engine import ENGINE_MAX_OUTPUT_TOKENS, clamp_llm
+    from soma.config import CLOUD_LIMITS
+    from soma.engine import clamp_llm
 
-    bare = LLM(usage_id="x", model="openrouter/a/b")
-    assert clamp_llm(bare).max_output_tokens == ENGINE_MAX_OUTPUT_TOKENS
-    explicit = LLM(usage_id="x", model="openrouter/a/b", max_output_tokens=512)
-    assert clamp_llm(explicit).max_output_tokens == 512
+    bare = LLM(usage_id="x", model="openrouter/a/b")  # a hand-added profile
+    assert clamp_llm(bare).max_output_tokens == CLOUD_LIMITS["max_output_tokens"]
+    explicit = LLM(usage_id="x", model="openrouter/a/b", max_output_tokens=512, timeout=7)
+    clamped = clamp_llm(explicit)
+    assert (clamped.max_output_tokens, clamped.timeout) == (512, 7)  # profile wins
 
 
 class _Wrapped(Exception):

@@ -53,9 +53,9 @@ exact** — `HELLO FROM SOMA` ($0.0078) and `hello from soma` ($0.0051),
 first try, in-workspace, one clean finish each. The local tier's
 noisiness was the model, not the design. Side finding: uncapped
 `max_tokens` (384K) made OpenRouter pre-authorize the model's full
-output limit and refuse with 402 on a small balance; the engine now
-clamps `max_output_tokens` to 16384 unless a profile sets it, and
-maps wrapped provider errors (402 credits, 401 auth, 429, 5xx) to
+output limit and refuse with 402 on a small balance; limits are now per-tier in soma.toml (`max_output_tokens` / `timeout` /
+`retries`; cloud default 131072 / 300 s / 10, local 16384 / 120 s / 2),
+baked into profiles by `soma init`, and the engine maps wrapped provider errors (402 credits, 401 auth, 429, 5xx) to
 typed verdicts instead of stack traces.
 
 ## Decision

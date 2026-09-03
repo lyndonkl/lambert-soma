@@ -26,23 +26,22 @@ from typing import Any
 from soma.config import SomaConfig
 
 DEFAULT_MAX_ITERATIONS = 100
-# SDK defaults are timeout=300s x 5 retries: a hung provider looks frozen for
-# ~25 minutes. A proto-cell should fail typed and fast instead (error:timeout).
-ENGINE_LLM_TIMEOUT = 120
-ENGINE_LLM_RETRIES = 2
-# Uncapped max_tokens asks the provider to pre-authorize the model's full
-# output limit (384K on some) against your balance; OpenRouter answers 402.
-ENGINE_MAX_OUTPUT_TOKENS = 16384
 
 
 def clamp_llm(llm):
-    """Engine safety clamps for any LLM: fail fast, bounded output."""
-    update: dict[str, Any] = {
-        "timeout": ENGINE_LLM_TIMEOUT, "num_retries": ENGINE_LLM_RETRIES,
-    }
+    """Fill missing safety limits on an LLM.
+
+    Profiles written by `soma init` already carry per-tier limits from
+    soma.toml (max_output_tokens / timeout / retries) and those win.
+    This only catches hand-added profiles: an uncapped max_tokens asks
+    the provider to reserve the model's full output limit (384K on some)
+    against your balance — OpenRouter answers 402.
+    """
+    from soma.config import CLOUD_LIMITS
+
     if llm.max_output_tokens is None:
-        update["max_output_tokens"] = ENGINE_MAX_OUTPUT_TOKENS
-    return llm.model_copy(update=update)
+        return llm.model_copy(update={"max_output_tokens": CLOUD_LIMITS["max_output_tokens"]})
+    return llm
 
 
 @dataclass

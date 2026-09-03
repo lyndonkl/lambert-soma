@@ -29,18 +29,44 @@ RESERVED_SECTIONS = ("soma", "local")
 _TIER_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 
-class LocalTier(BaseModel):
+# Per-seat call limits. Providers like OpenRouter reserve
+# max_output_tokens x output price against your balance BEFORE each call,
+# so the cap trades reply length against the balance you keep. Timeout
+# covers the whole non-streaming reply; retries fire on transient errors
+# only (429 / 5xx / timeouts — never on auth or credit failures).
+LOCAL_LIMITS = {"max_output_tokens": 16384, "timeout": 120, "retries": 2}
+CLOUD_LIMITS = {"max_output_tokens": 131072, "timeout": 300, "retries": 10}
+
+
+class TierLimits(BaseModel):
+    max_output_tokens: int | None = None
+    timeout: int | None = None
+    retries: int | None = None
+
+    def limits(self, defaults: dict[str, int]) -> dict[str, int]:
+        return {k: getattr(self, k) or v for k, v in defaults.items()}
+
+
+class LocalTier(TierLimits):
     """The Apple-Silicon tier (ADR-005). Costs are zero by definition."""
 
     model: str = "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
     base_url: str = "http://localhost:8000/v1"
     port: int = 8000
 
+    @property
+    def effective_limits(self) -> dict[str, int]:
+        return self.limits(LOCAL_LIMITS)
 
-class CloudTier(BaseModel):
-    """A cloud tier: just a model string. Fit-first — edit freely."""
+
+class CloudTier(TierLimits):
+    """A cloud tier: a model string plus optional limits. Fit-first — edit freely."""
 
     model: str
+
+    @property
+    def effective_limits(self) -> dict[str, int]:
+        return self.limits(CLOUD_LIMITS)
 
 
 # Benchmark-picked 2026-08 (see PR #2): worker = top SWE-bench Verified
@@ -134,6 +160,14 @@ port = 8000
 # (`model: reviewer`). worker and lead always exist: the harness binds
 # them. Fit-first policy: pick the model each seat deserves, then let
 # the ledger report the bill. Comments give $/M tokens in/out, 2026-08.
+
+# Optional per-seat limits on any tier (defaults: cloud 131072 output
+# tokens / 300 s / 10 retries; local 16384 / 120 s / 2). OpenRouter reserves
+# max_output_tokens x output price per call, so raise the cap to match the
+# balance you keep:
+#   max_output_tokens = 500000
+#   timeout = 600
+#   retries = 10
 
 [worker]  # agentic coding workhorse (SWE-bench Verified 80.6%)
 model = "openrouter/deepseek/deepseek-v4-pro"  # $0.42 / $0.83

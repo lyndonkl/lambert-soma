@@ -120,3 +120,23 @@ def test_doctor_notes_hand_added_profile(cfg):
     assert any("'scout'" in m and "hand-added" in m for m in infos)
     # hand-added profiles are noted, never failed
     assert all(ok is not False for ok, _ in checks)
+
+
+def test_bootstrap_bakes_per_tier_limits(cfg):
+    bootstrap_profiles(cfg, env={"OPENROUTER_API_KEY": "sk-test"})
+    from openhands.sdk import LLMProfileStore
+
+    store = LLMProfileStore(cfg.profile_store_path)
+    worker, local = store.load("worker"), store.load("local")
+    assert (worker.max_output_tokens, worker.timeout, worker.num_retries) == (131072, 300, 10)
+    assert (local.max_output_tokens, local.timeout, local.num_retries) == (16384, 120, 2)
+
+
+def test_force_without_env_keeps_baked_key(cfg):
+    bootstrap_profiles(cfg, env={"OPENROUTER_API_KEY": "sk-keep-me"})
+    bootstrap_profiles(cfg, force=True, env={})  # a shell that cannot see the key
+    from openhands.sdk import LLMProfileStore
+
+    worker = LLMProfileStore(cfg.profile_store_path).load("worker")
+    assert worker.api_key is not None
+    assert worker.api_key.get_secret_value() == "sk-keep-me"

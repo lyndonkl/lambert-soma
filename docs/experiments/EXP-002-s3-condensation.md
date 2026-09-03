@@ -65,6 +65,20 @@ Surprises, both load-bearing:
 
 Clean arm (default 240): no condensation on a short task; run finishes.
 
+**Cloud arm (2026-09-03, agent on `worker` = DeepSeek V4 Pro, condenser
+still local, `--condense-at 8`):** S3 holds — 6 Condensation events,
+ledger split `worker` 123,814 prompt / 2,770 completion tokens
+($0.034) vs `condenser` 6,357 / 298 ($0.00). And the **goldfish loop
+reproduces on a strong model**: a six-step task (echo a…e, then ls) got
+to d, condensation fired, and the agent restarted at `echo a` — six
+cycles of a/b/c until max-iterations, never reaching e. The loop is
+structural, not a weak-model artifact: at this cadence no model can
+recover "which step am I on" from the summary. This is the hard
+version of the PR-04 requirement (summaries must carry progress state;
+cadence must never outrun completion). A short haiku task on the same
+tier finished in 3 calls / 7 events — below the threshold, no
+condensation, clean finish.
+
 ## Decision
 
 **adopt** — condenser on the local tier with its own `usage_id` is the

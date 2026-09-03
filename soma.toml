@@ -18,6 +18,14 @@ port = 8000
 # them. Fit-first policy: pick the model each seat deserves, then let
 # the ledger report the bill. Comments give $/M tokens in/out, 2026-08.
 
+# Optional per-seat limits on any tier (defaults: cloud 131072 output
+# tokens / 300 s / 10 retries; local 16384 / 120 s / 2). OpenRouter reserves
+# max_output_tokens x output price per call, so raise the cap to match the
+# balance you keep:
+#   max_output_tokens = 500000
+#   timeout = 600
+#   retries = 10
+
 [worker]  # agentic coding workhorse (SWE-bench Verified 80.6%)
 model = "openrouter/deepseek/deepseek-v4-pro"  # $0.42 / $0.83
 
