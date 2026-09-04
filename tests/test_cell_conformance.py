@@ -113,9 +113,35 @@ def test_C4_B3_system_suffix_is_core_plus_overlay_only(cfg, tmp_path, monkeypatc
 
 # --- TASK ----------------------------------------------------------------
 
-@pytest.mark.skip(reason="T1: scoped board tools arrive PR-08")
-def test_T1_idle_without_claimed_bead():
-    ...
+@pytest.mark.skipif(__import__("shutil").which("bd") is None, reason="bd CLI required")
+def test_T1_T3_idle_cell_cannot_do_task_scoped_board_ops(tmp_path):
+    """T1: no claimed bead = idle; T3: only own claims may be closed/noted.
+
+    Enforced at the tool boundary (ladder PR-08). The harness-side half —
+    the briefing arriving with a claimed bead — arms with PR-09/16.
+    """
+    from soma.beads import (
+        BdClaimAction,
+        BdCloseAction,
+        BdCreateAction,
+        BdRunner,
+        CellBoard,
+        _ClaimExec,
+        _CloseExec,
+        _CreateExec,
+    )
+
+    runner = BdRunner(tmp_path / "board")
+    runner.bootstrap()
+    board = CellBoard(runner)
+    bead = runner.create("seeded", "", 2, discovered_from=None).data["id"]
+    # idle: task-scoped ops are refused
+    assert _CreateExec(board)(BdCreateAction(title="x")).is_error
+    assert _CloseExec(board)(BdCloseAction(bead_id=bead)).is_error
+    # claim -> has a task -> the same ops work, scoped to that claim
+    assert not _ClaimExec(board)(BdClaimAction(bead_id=bead)).is_error
+    assert not _CreateExec(board)(BdCreateAction(title="discovered")).is_error
+    assert not _CloseExec(board)(BdCloseAction(bead_id=bead)).is_error
 
 
 @pytest.mark.skip(reason="T2: log notifications arrive rung 2 (scheduler+inbox)")

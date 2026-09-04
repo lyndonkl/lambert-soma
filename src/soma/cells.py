@@ -115,6 +115,12 @@ def mint_agent(cfg: SomaConfig, definition, condense_at: int | None = None,
     llm = clamp_llm(llm).model_copy(update={"usage_id": f"agent:{definition.name}"})
     tools = [Tool(name=n) for n in definition.tools]
     tools += list(extra_tools or [])  # harness-mounted membrane tools (e.g. WAL)
+    # Cell Protocol T3: every cell gets its scoped board tools (ladder PR-08).
+    # Importing soma.beads registers them; the per-cell board bootstraps lazily
+    # (bd init in the bundle) when the conversation resolves the specs.
+    from soma.beads import BEADS_TOOL_NAMES  # the import also registers the tools
+
+    tools += [Tool(name=n) for n in BEADS_TOOL_NAMES]
     skills = _resolve_skills(definition, work_dir)
     base = Agent(llm=llm, tools=tools).static_system_message
     agent_kwargs: dict = {}

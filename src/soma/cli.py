@@ -118,6 +118,12 @@ def doctor(args: argparse.Namespace) -> int:
         mark = OK if ok_flag else (SKIP if ok_flag is None else BAD)
         print(f"{mark} {message}")
 
+    from soma.beads import check_bd  # ladder PR-08: cells need bd for board ops
+
+    for ok_flag, message in check_bd():
+        mark = OK if ok_flag else (SKIP if ok_flag is None else BAD)
+        print(f"{mark} {message}")
+
     if _apple_silicon():
         print(f"{OK} apple silicon: local tier possible on this machine")
         if _local_extra_installed():
