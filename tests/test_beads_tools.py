@@ -15,6 +15,7 @@ from soma.beads import (
     BdClaimAction,
     BdCloseAction,
     BdCreateAction,
+    BdDepAction,
     BdNoteAction,
     BdReadyAction,
     BdRunner,
@@ -22,6 +23,7 @@ from soma.beads import (
     _ClaimExec,
     _CloseExec,
     _CreateExec,
+    _DepExec,
     _NoteExec,
     _ReadyExec,
     board_for,
@@ -155,3 +157,73 @@ def test_doctor_check_reports_version():
     checks = check_bd()
     assert checks and checks[0][0] is not False
     assert "bd 1." in checks[0][1]
+
+
+# --- PR-11b: ordering a cell's own work ------------------------------------
+
+def test_dep_add_and_remove_roundtrip(runner):
+    a, b = seed(runner, "A first"), seed(runner, "B after")
+    added = runner.dep_add(b, a)
+    assert added.ok and added.data["status"] == "added" and added.data["type"] == "blocks"
+    removed = runner.dep_remove(b, a)
+    assert removed.ok and removed.data["status"] == "removed"
+
+
+def test_blocked_bead_hidden_from_ready_until_blocker_closes(runner):
+    a, b = seed(runner, "A gate"), seed(runner, "B waits")
+    assert runner.dep_add(b, a).ok
+
+    def ready_ids():
+        return {i["id"] for i in runner.ready().data}
+
+    assert a in ready_ids() and b not in ready_ids()
+    assert runner.close(a, "done").ok
+    assert b in ready_ids()
+
+
+def test_create_subtask_under_current_claim(board, runner):
+    t = seed(runner, "T held")
+    _ClaimExec(board)(BdClaimAction(bead_id=t))
+    obs = _CreateExec(board)(BdCreateAction(title="A part", as_subtask=True))
+    assert not obs.is_error
+    assert obs.data["id"].startswith(t + ".")  # hierarchical id: a child of T
+
+
+def test_dep_refuses_ids_above_scope(board, runner):
+    a = seed(runner, "A scoped")
+    obs = _DepExec(board)(BdDepAction(bead_id="lambert-soma-bad.1", depends_on=a))
+    assert obs.is_error and "never reaches above its scope" in obs.content[0].text
+    assert _DepExec(board)(BdDepAction(bead_id=a, depends_on="lambert-soma-bad.1")).is_error
+
+
+def test_dep_error_shapes_are_actionable(board, runner):
+    a = seed(runner, "A real")
+    ghost = _DepExec(board)(BdDepAction(bead_id=a, depends_on="cell-nope"))
+    assert ghost.is_error and "no issue found" in ghost.content[0].text
+    loop = _DepExec(board)(BdDepAction(bead_id=a, depends_on=a))
+    assert loop.is_error and "self-dependency" in loop.content[0].text
+
+
+def test_dep_malformed_json_guard(runner, monkeypatch):
+    fake = SimpleNamespace(returncode=0, stdout="<html>oops", stderr="")
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: fake)
+    r = runner.dep_add("cell-a", "cell-b")
+    assert not r.ok and "non-JSON" in r.error
+
+
+def test_cell_orders_its_own_work(board, runner):
+    """Hold T; create A and B under T; B waits for A; ready shows A only; close A -> B."""
+    t = seed(runner, "T ordered")
+    _ClaimExec(board)(BdClaimAction(bead_id=t))
+    a = _CreateExec(board)(BdCreateAction(title="A step", as_subtask=True)).data["id"]
+    b = _CreateExec(board)(BdCreateAction(title="B step", as_subtask=True)).data["id"]
+    dep = _DepExec(board)(BdDepAction(bead_id=b, depends_on=a))
+    assert not dep.is_error and "waits for" in dep.content[0].text
+
+    def ready_ids():
+        return {i["id"] for i in runner.ready().data}
+
+    assert a in ready_ids() and b not in ready_ids()
+    _ClaimExec(board)(BdClaimAction(bead_id=a))
+    assert not _CloseExec(board)(BdCloseAction(bead_id=a, reason="done")).is_error
+    assert b in ready_ids()
