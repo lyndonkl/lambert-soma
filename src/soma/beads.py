@@ -196,8 +196,18 @@ class CellBoard:
     runner: BdRunner
 
     def _open_on_board(self) -> list[str]:
+        """In-progress beads on this cell's board, oldest-touched first.
+
+        A cell holds one task at a time (T2), but if several are in
+        progress, `current` is the one most recently touched — the
+        claim just made — not whichever bd listed first.
+        """
         listed = self.runner.run("list", "--status=in_progress")
-        return [b["id"] for b in (listed.data or []) if b.get("id")] if listed.ok else []
+        if not listed.ok:
+            return []
+        rows = [b for b in (listed.data or []) if b.get("id")]
+        rows.sort(key=lambda b: b.get("updated_at") or "")
+        return [b["id"] for b in rows]
 
     @property
     def current(self) -> str | None:
