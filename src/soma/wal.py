@@ -281,15 +281,21 @@ def register_wal_tools() -> None:
 
 
 def wal_tool_specs(db_path: Path | str, cell_id: str,
-                   rate_per_minute: int = DEFAULT_RATE_PER_MINUTE) -> list:
-    """Tool specs for one cell: publish to its task log; read it and `main`."""
+                   rate_per_minute: int = DEFAULT_RATE_PER_MINUTE,
+                   extra_channels: Sequence[str] = ()) -> list:
+    """Tool specs for one cell: publish to its task log; read it and `main`.
+
+    `extra_channels` widens both lists — e.g. the `dialogue:<id>` a cell
+    was invited to (ladder PR-11). Default scoping is unchanged.
+    """
     from openhands.sdk import Tool
 
     register_wal_tools()
+    extras = list(extra_channels)
     params = {
         "db_path": str(db_path), "cell_id": cell_id,
-        "publish_channels": [cell_channel(cell_id)],
-        "read_channels": [cell_channel(cell_id), CHANNEL_MAIN],
+        "publish_channels": [cell_channel(cell_id), *extras],
+        "read_channels": [cell_channel(cell_id), CHANNEL_MAIN, *extras],
         "rate_per_minute": rate_per_minute,
     }
     return [Tool(name="wal_publish", params=params), Tool(name="wal_read", params=params)]
