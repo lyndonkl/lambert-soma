@@ -6,13 +6,17 @@ Conversation, not prompt text. Three shell-command hooks, each
 conversation dir (<run bundle>/<conversation id hex>) — the same key
 the cell's bd tools use (PR-08), so hooks and tools see ONE board:
 
-- SessionStart      -> `bd prime --hook-json` on the cell's board. The SDK
-                       records the result but injects nothing at
-                       SessionStart (EXP-006); the first UserPromptSubmit
-                       carries the discipline instead.
-- UserPromptSubmit  -> injects a board digest (open claims, ready beads)
-                       as additionalContext on every user message: board
-                       state at every turn (T1).
+- UserPromptSubmit  -> on the cell's FIRST message, injects the
+                       `bd prime --hook-json` orientation card (rules,
+                       commands, board summary) plus the board digest;
+                       on every later message, the digest alone (open
+                       claims, ready beads): board state at every turn
+                       (T1). A marker file in the conversation dir
+                       records that the card was delivered, so a
+                       resumed cell is not re-primed (R2).
+                       There is no SessionStart hook: the SDK records
+                       a SessionStart hook's output but never shows it
+                       to the model (EXP-006).
 - Stop              -> exit 2 while any bead on the cell's board is still
                        in_progress; the SDK feeds stderr back to the agent
                        and keeps it running (N2). A cell finishes by
@@ -33,7 +37,8 @@ from pathlib import Path
 
 from soma.beads import BdRunner, board_dir_for
 
-HOOK_EVENTS = ("session_start", "user_prompt_submit", "stop")
+HOOK_EVENTS = ("user_prompt_submit", "stop")
+PRIMED_MARKER = "soma-primed"
 HOOK_TIMEOUT_S = 60
 DISCIPLINE = (
     "Board discipline (Cell Protocol T1/N1/N2): claim a bead with bd_claim "
@@ -93,20 +98,26 @@ def bd_prime(runner: BdRunner) -> dict:
         raise RuntimeError(f"bd prime returned non-JSON: {proc.stdout[:120]!r}") from exc
 
 
-def hook_session_start(bundle: Path | str) -> tuple[int, str, str]:
-    """`bd prime --hook-json` re-wrapped into the SDK's stdout shape."""
+def _prime_card_once(bundle: Path | str, runner: BdRunner) -> str:
+    """The bd prime orientation card, delivered on the first message only."""
+    marker = Path(bundle) / PRIMED_MARKER
+    if marker.exists():
+        return ""
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("")  # one attempt: delivered, or its failure reported once
     try:
-        data = bd_prime(runner_for_bundle(bundle))
+        data = bd_prime(runner)
     except RuntimeError as exc:
-        return 2, "", f"[soma hook] SessionStart: {exc}"
-    text = (data.get("hookSpecificOutput") or {}).get("additionalContext") or json.dumps(data)
-    return _ok(text)
+        return f"[soma hook] bd prime unavailable — {exc}\n\n"
+    card = (data.get("hookSpecificOutput") or {}).get("additionalContext") or json.dumps(data)
+    return card + "\n\n"
 
 
 def hook_user_prompt_submit(bundle: Path | str) -> tuple[int, str, str]:
-    """Board digest on every user message. Never blocks the message."""
+    """First message: prime card + digest. Every message: digest. Never blocks."""
     try:
-        return _ok(board_digest(runner_for_bundle(bundle)))
+        runner = runner_for_bundle(bundle)
+        return _ok(_prime_card_once(bundle, runner) + board_digest(runner))
     except RuntimeError as exc:
         return _ok(f"[soma hook] board unavailable — {exc}. You cannot claim or close "
                    "tasks; say so and stop.")
@@ -129,7 +140,6 @@ def hook_stop(bundle: Path | str) -> tuple[int, str, str]:
 
 
 _HANDLERS = {
-    "session_start": hook_session_start,
     "user_prompt_submit": hook_user_prompt_submit,
     "stop": hook_stop,
 }
@@ -164,7 +174,6 @@ def soma_hook_config(bundle: Path | str):
             command=hook_command(event, bundle), timeout=HOOK_TIMEOUT_S)])]
 
     return HookConfig(
-        session_start=matcher("session_start"),
         user_prompt_submit=matcher("user_prompt_submit"),
         stop=matcher("stop"),
     )

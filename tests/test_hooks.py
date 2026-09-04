@@ -9,7 +9,6 @@ import pytest
 from soma.beads import BdRunner, board_dir_for
 from soma.hooks import (
     hook_command,
-    hook_session_start,
     hook_stop,
     hook_user_prompt_submit,
     run_hook,
@@ -109,14 +108,19 @@ def test_user_prompt_submit_reports_board_failure_visibly(boards, bundle, monkey
 
 
 @needs_bd
-def test_session_start_rewraps_bd_prime(boards, bundle):
+def test_first_message_carries_prime_card_then_digest_only(boards, bundle):
     BdRunner(board_dir_for(bundle)).bootstrap()
-    code, out, _ = hook_session_start(bundle)
+    code, first, _ = hook_user_prompt_submit(bundle)
     assert code == 0
-    assert "Beads" in json.loads(out)["additionalContext"]
+    first_ctx = json.loads(first)["additionalContext"]
+    assert "Beads" in first_ctx  # the bd prime orientation card
+    code, second, _ = hook_user_prompt_submit(bundle)
+    second_ctx = json.loads(second)["additionalContext"]
+    assert "Beads" not in second_ctx  # digest only from here on
+    assert (bundle / "soma-primed").exists()  # a resumed cell is not re-primed
 
 
-@pytest.mark.parametrize("event", ["session_start", "user_prompt_submit", "stop"])
+@pytest.mark.parametrize("event", ["user_prompt_submit", "stop"])
 def test_hooks_never_exit_one(boards, bundle, monkeypatch, event):
     """SDK trap: exit 1 is a NON-blocking error. Every failure path is 0 or 2."""
     monkeypatch.setattr(shutil, "which", lambda _name: None)
@@ -128,10 +132,10 @@ def test_unknown_event_is_a_block(bundle, capsys):
     assert "unknown event" in capsys.readouterr().err
 
 
-def test_hook_config_mounts_three_events(bundle):
+def test_hook_config_mounts_two_events(bundle):
     cfg = soma_hook_config(bundle)
-    for group, event in ((cfg.session_start, "session_start"),
-                         (cfg.user_prompt_submit, "user_prompt_submit"),
+    assert cfg.session_start == []  # EXP-006: its output never reaches the model
+    for group, event in ((cfg.user_prompt_submit, "user_prompt_submit"),
                          (cfg.stop, "stop")):
         assert len(group) == 1 and len(group[0].hooks) == 1
         cmd = group[0].hooks[0].command

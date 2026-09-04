@@ -373,7 +373,7 @@ def main(argv: list[str] | None = None) -> int:
     d.set_defaults(fn=doctor)
 
     hk = sub.add_parser("hook", help="(internal) SDK hook entry: Beads discipline for a cell")
-    hk.add_argument("event", choices=("session_start", "user_prompt_submit", "stop"))
+    hk.add_argument("event", choices=("user_prompt_submit", "stop"))
     hk.add_argument("--bundle", required=True, help="the cell's run bundle dir")
     hk.set_defaults(fn=soma_hook)
 
