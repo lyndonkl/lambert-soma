@@ -18,6 +18,13 @@ bd 1.2.2 facts this code relies on (probed 2026-09-02, see EXP-004):
   `bd list --type event`. claim/close emit one each.
 - Embedded Dolt is single-writer per board; per-cell boards sidestep
   contention entirely (EXP-004 measures the alternative).
+- Ordering (PR-11b, probed 2026-09-04): `bd dep add|remove <bead>
+  <depends_on> --json` returns an object {issue_id, depends_on_id,
+  status: "added"|"removed", type: "blocks"}; bad or self ids are the
+  {"error": ...} shape. `bd create --parent <id>` returns the usual
+  create object with a hierarchical id `<parent>.N`. `bd ready` hides a
+  bead while any bead it depends on is open and lists it again once
+  that blocker closes — so ordered claims fall out of bd_ready alone.
 """
 
 from __future__ import annotations
@@ -45,7 +52,7 @@ from pydantic import Field
 
 BD_SUPPORTED_SERIES = "1.2"
 RUN_PREFIX = "cell"
-BEADS_TOOL_NAMES = ("bd_ready", "bd_claim", "bd_close", "bd_create", "bd_note")
+BEADS_TOOL_NAMES = ("bd_ready", "bd_claim", "bd_close", "bd_create", "bd_note", "bd_dep")
 _BD_TIMEOUT = 60
 
 
@@ -122,12 +129,21 @@ class BdRunner:
         return self.run("close", bead_id, "--reason", reason or "done")
 
     def create(self, title: str, description: str, priority: int,
-               discovered_from: str | None) -> BdResult:
+               discovered_from: str | None, parent: str | None = None) -> BdResult:
         args = ["create", "--title", title, "--type", "task",
                 "--priority", str(priority), "--description", description or title]
         if discovered_from:
             args += ["--deps", f"discovered-from:{discovered_from}"]
+        if parent:
+            args += ["--parent", parent]  # hierarchical id: <parent>.N
         return self.run(*args)
+
+    def dep_add(self, bead_id: str, depends_on: str) -> BdResult:
+        """`bead_id` waits for `depends_on` (a blocks-dependency)."""
+        return self.run("dep", "add", bead_id, depends_on)
+
+    def dep_remove(self, bead_id: str, depends_on: str) -> BdResult:
+        return self.run("dep", "remove", bead_id, depends_on)
 
     def note(self, bead_id: str, text: str) -> BdResult:
         return self.run("comment", bead_id, text)
@@ -244,9 +260,19 @@ class BdCloseAction(Action):
 
 
 class BdCreateAction(Action):
-    title: str = Field(description="Short title for work you discovered but will not do now.")
+    title: str = Field(description="Short title for the new bead.")
     description: str = Field(default="", description="Why it matters; what needs doing.")
     priority: int = Field(default=2, description="0 (critical) .. 4 (backlog).")
+    as_subtask: bool = Field(default=False, description=(
+        "True: a sub-task of your current bead that YOU will do, in order "
+        "(id <current>.N; order it with bd_dep). False: work you discovered "
+        "but will not do now, linked discovered-from your current bead."))
+
+
+class BdDepAction(Action):
+    bead_id: str = Field(description="The bead that must wait (on this board).")
+    depends_on: str = Field(description="The bead that must close first (on this board).")
+    remove: bool = Field(default=False, description="True to remove the dependency instead.")
 
 
 class BdNoteAction(Action):
@@ -313,12 +339,31 @@ class _CreateExec(_BoardExec):
     def __call__(self, action, conversation=None):
         parent = self.board.current
         if parent is None:
-            return _refuse("no claimed bead — discoveries hang off your current task; "
-                           "claim one first (T1/T4)")
+            return _refuse("no claimed bead — discoveries and sub-tasks hang off your "
+                           "current task; claim one first (T1/T4)")
+        if action.as_subtask:
+            r = self.board.runner.create(action.title, action.description,
+                                         action.priority, discovered_from=None, parent=parent)
+            new_id = r.data.get("id") if r.ok and isinstance(r.data, dict) else "?"
+            return _obs(r, (f"created {new_id} as a sub-task of {parent} — order it with "
+                            "bd_dep, then claim it when bd_ready shows it"))
         r = self.board.runner.create(action.title, action.description,
                                      action.priority, discovered_from=parent)
         new_id = r.data.get("id") if r.ok and isinstance(r.data, dict) else "?"
         return _obs(r, f"created {new_id} (discovered-from {parent}) — not yours to do now")
+
+
+class _DepExec(_BoardExec):
+    def __call__(self, action, conversation=None):
+        why = self.board.in_scope(action.bead_id) or self.board.in_scope(action.depends_on)
+        if why:
+            return _refuse(why)
+        if action.remove:
+            return _obs(self.board.runner.dep_remove(action.bead_id, action.depends_on),
+                        f"removed: {action.bead_id} no longer waits for {action.depends_on}")
+        return _obs(self.board.runner.dep_add(action.bead_id, action.depends_on),
+                    (f"{action.bead_id} now waits for {action.depends_on} (blocks) — "
+                     f"bd_ready hides it until {action.depends_on} closes"))
 
 
 class _NoteExec(_BoardExec):
@@ -368,8 +413,17 @@ class BdCloseTool(ToolDefinition[BdCloseAction, BdObservation]):
 class BdCreateTool(ToolDefinition[BdCreateAction, BdObservation]):
     @classmethod
     def create(cls, conv_state=None, **_: Any) -> Sequence[BdCreateTool]:
-        return _mk(cls, conv_state, "Record work you discovered but will not do now, "
-                   "linked to your current bead.", BdCreateAction, _CreateExec)
+        return _mk(cls, conv_state, "Create a bead under your current one: a sub-task "
+                   "you will do (as_subtask=True), or work you discovered but will "
+                   "not do now.", BdCreateAction, _CreateExec)
+
+
+class BdDepTool(ToolDefinition[BdDepAction, BdObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **_: Any) -> Sequence[BdDepTool]:
+        return _mk(cls, conv_state, "Order beads on your board: make one wait for "
+                   "another to close first (or remove that wait). bd_ready then "
+                   "shows them in order.", BdDepAction, _DepExec)
 
 
 class BdNoteTool(ToolDefinition[BdNoteAction, BdObservation]):
@@ -379,5 +433,5 @@ class BdNoteTool(ToolDefinition[BdNoteAction, BdObservation]):
                    BdNoteAction, _NoteExec)
 
 
-for _tool_cls in (BdReadyTool, BdClaimTool, BdCloseTool, BdCreateTool, BdNoteTool):
+for _tool_cls in (BdReadyTool, BdClaimTool, BdCloseTool, BdCreateTool, BdNoteTool, BdDepTool):
     register_tool(_tool_cls.name, _tool_cls)

@@ -322,3 +322,34 @@ def test_R1_R2_X4_live_crash_resume(tmp_path):
             "SELECT status FROM runs WHERE run_id = ?", (dead.run_id,)
         ).fetchall()
     assert rows == [("finished",)]               # X4/R1: one row, updated
+
+
+# --- TASK, ordered (ladder PR-11b) ----------------------------------------
+
+@pytest.mark.skipif(__import__("shutil").which("bd") is None, reason="bd CLI required")
+def test_T3_T4_cell_orders_its_own_subtasks_on_its_own_board(tmp_path):
+    """T4: a cell splits its held task into sub-tasks and orders them;
+    T3: dependency declarations never reach beyond its own board."""
+    from soma.beads import (
+        BdClaimAction,
+        BdCreateAction,
+        BdDepAction,
+        BdRunner,
+        CellBoard,
+        _ClaimExec,
+        _CreateExec,
+        _DepExec,
+    )
+
+    runner = BdRunner(tmp_path / "board")
+    runner.bootstrap()
+    board = CellBoard(runner)
+    t = runner.create("held task", "", 2, discovered_from=None).data["id"]
+    _ClaimExec(board)(BdClaimAction(bead_id=t))
+    a = _CreateExec(board)(BdCreateAction(title="A", as_subtask=True)).data["id"]
+    b = _CreateExec(board)(BdCreateAction(title="B", as_subtask=True)).data["id"]
+    assert not _DepExec(board)(BdDepAction(bead_id=b, depends_on=a)).is_error
+    ready = {i["id"] for i in runner.ready().data}
+    assert a in ready and b not in ready  # the order falls out of bd_ready
+    above = _DepExec(board)(BdDepAction(bead_id=b, depends_on="lambert-soma-bad.1"))
+    assert above.is_error  # T3: never above its scope
