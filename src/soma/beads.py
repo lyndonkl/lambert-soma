@@ -29,7 +29,7 @@ import shutil
 import subprocess
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -169,14 +169,24 @@ def check_bd() -> list[tuple[bool | None, str]]:
 
 @dataclass
 class CellBoard:
-    """Runner + this cell's claims. Shared by the five tools of one cell."""
+    """Runner for this cell's private board. Shared by the five tools of one cell.
+
+    The board is the only truth about claims: the SDK can hand different
+    tool-executor copies to different calls, so nothing is cached here.
+    The board is per cell by construction, so every in_progress bead on
+    it is this cell's own claim (T3 holds by construction).
+    """
 
     runner: BdRunner
-    claimed: list[str] = field(default_factory=list)
+
+    def _open_on_board(self) -> list[str]:
+        listed = self.runner.run("list", "--status=in_progress")
+        return [b["id"] for b in (listed.data or []) if b.get("id")] if listed.ok else []
 
     @property
     def current(self) -> str | None:
-        return self.claimed[-1] if self.claimed else None
+        open_ids = self._open_on_board()
+        return open_ids[-1] if open_ids else None
 
     def in_scope(self, bead_id: str) -> str | None:
         if not bead_id.startswith(self.runner.id_prefix):
@@ -185,10 +195,11 @@ class CellBoard:
         return None
 
     def mine(self, bead_id: str) -> str | None:
-        if bead_id not in self.claimed:
-            return (f"'{bead_id}' is not a bead this cell claimed — a cell may only "
-                    f"close/note its own claims (T3); claimed so far: {self.claimed or 'none'}")
-        return None
+        open_ids = self._open_on_board()
+        if bead_id in open_ids:
+            return None
+        return (f"'{bead_id}' is not in progress on this cell's board — a cell may only "
+                f"close/note its own claims (T3); in progress now: {open_ids or 'none'}")
 
 
 _BOARDS: dict[str, CellBoard] = {}
@@ -280,7 +291,6 @@ class _ClaimExec(_BoardExec):
             return _refuse(why)
         r = self.board.runner.claim(action.bead_id)
         if r.ok:
-            self.board.claimed.append(action.bead_id)
             self.board.runner.emit_event(f"claimed {action.bead_id}",
                                          {"bead": action.bead_id, "kind": "claim"})
         return _obs(r, f"claimed {action.bead_id} — it is your task now (T1)")

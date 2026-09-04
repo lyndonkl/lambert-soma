@@ -109,8 +109,15 @@ def build_agent(cfg: SomaConfig, tier: str = "worker", condense_at: int | None =
 def _make_conversation(agent, workspace: Path, persistence_dir: Path,
                        max_iterations: int, visualize: bool,
                        conversation_id=None):
+    import uuid as uuid_mod
+
     from openhands.sdk import Conversation
 
+    from soma.hooks import soma_hook_config  # Beads discipline as SDK hooks (PR-09)
+
+    # Mint the id here so the hooks can be keyed by the conversation dir
+    # (<bundle>/<id.hex>) — the same key the cell's bd tools use for its board.
+    conversation_id = conversation_id or uuid_mod.uuid4()
     return Conversation(
         agent,
         workspace=str(workspace),
@@ -119,6 +126,7 @@ def _make_conversation(agent, workspace: Path, persistence_dir: Path,
         max_iteration_per_run=max_iterations,
         visualizer=None if not visualize else _default_visualizer(),
         delete_on_close=False,
+        hook_config=soma_hook_config(Path(persistence_dir) / conversation_id.hex),
     )
 
 

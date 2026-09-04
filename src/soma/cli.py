@@ -11,6 +11,7 @@ docs/build-plan.md). This bootstrap ships the environment story:
     soma archetypes  list + validate the available roles (PR-05, ADR-006)
     soma skills      list + audit skills before cells mount them (PR-07)
     soma report      read the telemetry ledger (costs per run / per brain, PR-03)
+    soma hook        (internal) SDK hook entry — Beads discipline per cell (PR-09)
 
 The canonical flags exist because S1 taught us that without the right
 tool-call parser, a healthy model looks broken (calls arrive as text).
@@ -287,6 +288,13 @@ def report_costs(args: argparse.Namespace) -> int:
     return 0
 
 
+def soma_hook(args: argparse.Namespace) -> int:
+    """Entry point for the SDK hook subprocesses (PR-09). Exits 0 or 2, never 1."""
+    from soma.hooks import run_hook
+
+    return run_hook(args.event, args.bundle)
+
+
 def local_up(args: argparse.Namespace) -> int:
     if not _apple_silicon():
         print("local tier is Apple Silicon only in v0 (ADR-005); this box runs cloud-only.")
@@ -363,6 +371,11 @@ def main(argv: list[str] | None = None) -> int:
     d = sub.add_parser("doctor", help="report what this machine can do")
     d.add_argument("--port", type=int, default=DEFAULT_PORT)
     d.set_defaults(fn=doctor)
+
+    hk = sub.add_parser("hook", help="(internal) SDK hook entry: Beads discipline for a cell")
+    hk.add_argument("event", choices=("user_prompt_submit", "stop"))
+    hk.add_argument("--bundle", required=True, help="the cell's run bundle dir")
+    hk.set_defaults(fn=soma_hook)
 
     lo = sub.add_parser("local", help="local inference server")
     lo_sub = lo.add_subparsers(dest="local_command", required=True)
