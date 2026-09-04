@@ -95,7 +95,7 @@ def test_T1_task_scoped_ops_refused_without_a_claim(board):
 def test_T3_close_and_note_only_own_claims(board, runner):
     foreign = seed(runner, "someone else's")
     close = _CloseExec(board)(BdCloseAction(bead_id=foreign))
-    assert close.is_error and "not a bead this cell claimed" in close.content[0].text
+    assert close.is_error and "not in progress on this cell" in close.content[0].text
     note = _NoteExec(board)(BdNoteAction(bead_id=foreign, text="hi"))
     assert note.is_error
 
