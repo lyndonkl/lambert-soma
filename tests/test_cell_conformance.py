@@ -192,6 +192,39 @@ def test_D2_D5_dialogue_park_unpark_and_summary_injection():
     ...
 
 
+def test_D1_D4_cell_accepts_invitation_and_emits_valid_resolved(tmp_path):
+    """Cell side of D1 (invitation -> accept) and D4 (RESOLVED with a valid
+    payload), plus the parked flag of D2, driven purely by synthetic WAL
+    events — no peer cell, no model (ladder PR-11)."""
+    from types import SimpleNamespace
+
+    from openhands.sdk import TextContent
+
+    from soma.cells import DIALOGUE_MODE_OVERLAY
+    from soma.dialogue import CellParked, DialogueParticipant, Resolution
+    from soma.wal import WalStore, cell_channel
+
+    store = WalStore(tmp_path / "wal.db")
+    reply = 'RESOLVED: {"outcome": "agreed", "summary": "use soma.wal", "next_steps": []}'
+    llm = SimpleNamespace(completion=lambda messages, **kw: SimpleNamespace(
+        message=SimpleNamespace(content=[TextContent(text=reply)])))
+    cell = DialogueParticipant(store=store, cell_id="scout-1", archetype_core="Scout core.",
+                               llm=llm, briefing="map the repo", overlay=DIALOGUE_MODE_OVERLAY)
+    store.publish(cell_channel("scout-1"), "lead-1", "invitation",
+                  {"dialogue": "dialogue:7", "from": "lead-1"})
+    assert cell.tick() == "dialogue:7"                      # D1: accepted
+    assert cell.parked
+    with pytest.raises(CellParked):                          # D2: no task step while parked
+        cell.assert_not_parked()
+    store.publish("dialogue:7", "lead-1", "turn", {"text": "which module?"})
+    assert cell.tick() == "resolved"                         # D4: explicit RESOLVED
+    kinds = [e["kind"] for e in store.read("dialogue:7")]
+    assert kinds == ["accept", "turn", "resolved"]
+    payload = json.loads(store.read("dialogue:7")[-1]["payload"])
+    assert Resolution.model_validate(payload).outcome == "agreed"  # validated payload
+    assert not cell.parked
+
+
 @pytest.mark.skip(reason="C6-C8: team_roster/team_goal arrive rung 2 (team.md)")
 def test_C6_C7_C8_roster_and_goal_queries_opaque_and_solo_safe():
     ...

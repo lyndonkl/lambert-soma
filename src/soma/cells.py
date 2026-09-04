@@ -35,6 +35,18 @@ summaries and never redo work you already verified (EXP-002).
 </soma:mode:task>"""
 
 
+# Dialogue-mode overlay (B3 layer 2, the conversational variant — D3).
+# Harness-owned protocol text: how any cell talks, regardless of archetype.
+DIALOGUE_MODE_OVERLAY = """<soma:mode:dialogue>
+This is a dialogue activity (Cell Protocol v0): talk, not tool use.
+Reply in a few sentences, never long paragraphs. Each turn, decide
+what you still need to find out, or what the other cell needs from
+you, and say only that. When the matter is settled, end with RESOLVED.
+</soma:mode:dialogue>"""
+
+CELL_STATUSES = ("idle", "on_task", "in_dialogue")  # D2: in_dialogue = parked
+
+
 @dataclass
 class Cell:
     id: str
