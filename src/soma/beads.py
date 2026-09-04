@@ -174,9 +174,27 @@ class CellBoard:
     runner: BdRunner
     claimed: list[str] = field(default_factory=list)
 
+    def _open_on_board(self) -> list[str]:
+        """The board is the truth, not this object's memory.
+
+        The SDK can hand different tool-executor copies to different calls,
+        so an in-memory claim list may be empty while the bead IS claimed on
+        this cell's board. The board is per cell by construction, so every
+        in_progress bead on it is this cell's own claim (T3 holds by
+        construction). Seen live in PR-09: bd_claim ok, bd_close refused.
+        """
+        listed = self.runner.run("list", "--status=in_progress")
+        return [b["id"] for b in (listed.data or []) if b.get("id")] if listed.ok else []
+
     @property
     def current(self) -> str | None:
-        return self.claimed[-1] if self.claimed else None
+        if self.claimed:
+            return self.claimed[-1]
+        open_ids = self._open_on_board()
+        if open_ids:
+            self.claimed.extend(open_ids)
+            return self.claimed[-1]
+        return None
 
     def in_scope(self, bead_id: str) -> str | None:
         if not bead_id.startswith(self.runner.id_prefix):
@@ -185,10 +203,12 @@ class CellBoard:
         return None
 
     def mine(self, bead_id: str) -> str | None:
-        if bead_id not in self.claimed:
-            return (f"'{bead_id}' is not a bead this cell claimed — a cell may only "
-                    f"close/note its own claims (T3); claimed so far: {self.claimed or 'none'}")
-        return None
+        if bead_id in self.claimed or bead_id in self._open_on_board():
+            if bead_id not in self.claimed:
+                self.claimed.append(bead_id)
+            return None
+        return (f"'{bead_id}' is not a bead this cell claimed — a cell may only "
+                f"close/note its own claims (T3); claimed so far: {self.claimed or 'none'}")
 
 
 _BOARDS: dict[str, CellBoard] = {}

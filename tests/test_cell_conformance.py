@@ -151,9 +151,38 @@ def test_T2_notification_does_not_rebuild_cell():
 
 # --- DONE ----------------------------------------------------------------
 
-@pytest.mark.skip(reason="N1+N2: Stop-hook discipline arrives PR-09")
-def test_N1_N2_finish_blocked_while_bead_open():
-    ...
+@pytest.mark.skipif(__import__("shutil").which("bd") is None, reason="bd CLI required")
+def test_N1_N2_finish_blocked_while_bead_open(tmp_path, monkeypatch):
+    """N1/N2 through the SDK's own hook machinery, no model needed.
+
+    A cell whose claimed bead is still open is refused by the Stop hook
+    (exit 2, feedback names the bead); once the bead is closed, the same
+    hook lets it finish.
+    """
+    from openhands.sdk.hooks import HookManager
+
+    from soma import beads
+    from soma.beads import BdRunner, board_dir_for
+    from soma.hooks import soma_hook_config
+
+    boards = tmp_path / "boards"
+    monkeypatch.setattr(beads, "BOARDS_ROOT", boards)
+    monkeypatch.setenv("SOMA_BOARDS_ROOT", str(boards))  # the hook subprocess reads env
+    bundle = tmp_path / "runs" / "r1"
+    bundle.mkdir(parents=True)
+    runner = BdRunner(board_dir_for(bundle))
+    runner.bootstrap()
+    bead_id = runner.create("do the thing", "d", 2, None).data["id"]
+    assert runner.claim(bead_id).ok
+
+    manager = HookManager(soma_hook_config(bundle), working_dir=str(tmp_path))
+    should_stop, results = manager.run_stop(reason="agent_finished")
+    assert should_stop is False  # N2: blocked while the claim is open
+    assert bead_id in (manager.get_blocking_reason(results) or "")
+
+    assert runner.close(bead_id, "verified").ok
+    should_stop, _ = manager.run_stop(reason="agent_finished")
+    assert should_stop is True  # N1: closing the bead is part of being done
 
 
 # --- DIALOGUE / TEAM AWARENESS ------------------------------------------
