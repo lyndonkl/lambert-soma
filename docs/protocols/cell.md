@@ -155,6 +155,9 @@ neighbors, no real team, no real board where fakeable — and asserts by rule:
 | kill mid-task → resume continues, not restarts | R1 R2 X4 |
 | dialogue park/unpark + summary injection | D2 D5 (arrives rung 2) |
 | roster/goal queries: opaque identities, team goal, solo fallback | C6 C7 C8 (arrives rung 2) |
+| full lifecycle golden transcript: briefing → remember → death, read from the cell's log alone | B1 X1 X3 X4 |
+| death recorded on error paths; reflection requested in the death event | X1 X2 |
+| import boundary: cell modules import only downward | C4 |
 
 v0 of the harness (PR-04) covers the rows implementable against the PR-02
 engine; D-row checks land with the dialogue engine and cite this spec.

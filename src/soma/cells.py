@@ -44,7 +44,7 @@ what you still need to find out, or what the other cell needs from
 you, and say only that. When the matter is settled, end with RESOLVED.
 </soma:mode:dialogue>"""
 
-CELL_STATUSES = ("idle", "on_task", "in_dialogue")  # D2: in_dialogue = parked
+CELL_STATUSES = ("idle", "on_task", "in_dialogue", "dead")  # D2 parked; X1 dead
 
 
 @dataclass
