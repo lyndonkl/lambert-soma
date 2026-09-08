@@ -138,6 +138,21 @@ def _default_visualizer():
     return DefaultConversationVisualizer
 
 
+def _write_death(persistence_dir: Path, cell_id: str, status: str, archetype: str) -> None:
+    """X1: death is harness-side. Best-effort like the ledger — never fails a run."""
+    import sqlite3
+
+    from soma.memory import write_death
+    from soma.wal import open_run_wal
+
+    try:
+        wal = open_run_wal(persistence_dir)
+        write_death(wal, cell_id, status, archetype, persistence_dir)
+        wal.close()
+    except (OSError, sqlite3.Error):
+        pass
+
+
 def _llm_error_hints():
     from openhands.sdk.llm.exceptions import (
         LLMAuthenticationError,
@@ -250,6 +265,9 @@ def run_task(
     wal = open_run_wal(persistence_dir)
     write_briefing(wal, cell_id, task)
     extra_tools = wal_tool_specs(wal.path, cell_id)  # membrane tools, scoped to this cell
+    from soma.memory import remember_tool_specs
+
+    extra_tools += remember_tool_specs(persistence_dir, wal.path, cell_id, archetype or "proto")
     wal.close()
 
     if archetype is not None:
@@ -271,6 +289,7 @@ def run_task(
         # cell never knows the ledger exists; a ledger hiccup never fails a run)
         record_run(cfg, run_id, task, tier, str(workspace), status,
                    persistence_dir, started_at)
+        _write_death(persistence_dir, cell_id, status, archetype or "proto")
 
     try:
         conversation.send_message(task)
@@ -329,13 +348,19 @@ def resume_run(
     from soma.wal import WAL_FILENAME, WalStore, wal_tool_specs
 
     extra_tools: list = []
+    cell_ids: list[str] = []
     wal_path = persistence_dir / WAL_FILENAME
     if wal_path.is_file():
         store = WalStore(wal_path)
         cell_ids = [c.removeprefix("cell:") for c in store.channels() if c.startswith("cell:")]
         store.close()
         if cell_ids:
-            extra_tools = wal_tool_specs(wal_path, cell_ids[0])
+            from soma.memory import remember_tool_specs
+
+            cell_id = cell_ids[0]
+            archetype_label = cell_id.rsplit("-", 1)[0]  # cell ids are <archetype>-<hex>
+            extra_tools = wal_tool_specs(wal_path, cell_id)
+            extra_tools += remember_tool_specs(persistence_dir, wal_path, cell_id, archetype_label)
     agent = build_agent(cfg, tier=tier, condense_at=condense_at, extra_tools=extra_tools)
     conversation = _make_conversation(
         agent, workspace, persistence_dir, max_iterations, visualize,
@@ -345,6 +370,8 @@ def resume_run(
     def _record(status: str) -> None:
         record_run(cfg, run_id, task, tier, str(workspace), status,
                    persistence_dir, started_at)
+        if cell_ids:
+            _write_death(persistence_dir, cell_ids[0], status, cell_ids[0].rsplit("-", 1)[0])
 
     try:
         conversation.run()

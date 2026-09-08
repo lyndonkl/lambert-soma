@@ -232,6 +232,85 @@ def test_C6_C7_C8_roster_and_goal_queries_opaque_and_solo_safe():
 
 # --- DEATH / RESUME ------------------------------------------------------
 
+def test_B1_X1_X3_X4_full_lifecycle_golden_transcript(cfg, monkeypatch):
+    """BIRTH -> life (a remember marker) -> DEATH, read purely from the cell's log."""
+    from soma.memory import RememberAction, RememberExecutor
+    from soma.wal import WAL_FILENAME, WalStore
+
+    class _LivingStub(_Stub):
+        """A cell that, during its life, marks one moment worth remembering."""
+
+        def __init__(self, bundle):
+            super().__init__()
+            self.bundle = bundle
+
+        def run(self):
+            store = WalStore(self.bundle / WAL_FILENAME)
+            cell_id = next(c for c in store.channels() if c.startswith("cell:")).removeprefix("cell:")
+            store.close()
+            RememberExecutor(str(self.bundle), str(self.bundle / WAL_FILENAME), cell_id, "proto")(
+                RememberAction(text="a lesson from this life", tags=["lesson"])
+            )
+
+    holder: dict = {}
+
+    def factory(agent, workspace, persistence_dir, max_iterations, visualize, conversation_id=None):
+        holder["stub"] = _LivingStub(persistence_dir)
+        return holder["stub"]
+
+    monkeypatch.setattr("soma.engine._make_conversation", factory)
+    result = run_task("the briefing", cfg, visualize=False)
+    assert result.ok
+    store = WalStore(result.persistence_dir / WAL_FILENAME)
+    channel = next(c for c in store.channels() if c.startswith("cell:"))
+    events = store.read(channel)
+    assert [e["kind"] for e in events] == ["briefing", "remember", "death"]  # the golden transcript
+    assert events[0]["author"] == "harness" and events[-1]["author"] == "harness"
+    death = json.loads(events[-1]["payload"])
+    assert death["status"] == "finished" and death["markers"] == 1
+    assert death["reflection"] == "requested"  # X2's trigger, consumed at Rung 4
+    assert (result.persistence_dir / "memory-markers.jsonl").is_file()  # X4: survives
+
+
+def test_X1_death_is_recorded_on_error_paths_too(cfg, monkeypatch):
+    from soma.wal import WAL_FILENAME, WalStore
+
+    class _Provider(Exception):
+        status_code = 402
+
+    stub = _Stub()
+    stub.run = lambda: (_ for _ in ()).throw(_Provider("balance"))
+    monkeypatch.setattr("soma.engine._make_conversation", lambda *a, **k: stub)
+    result = run_task("t", cfg, visualize=False)
+    assert result.status == "error:credits"
+    store = WalStore(result.persistence_dir / WAL_FILENAME)
+    channel = next(c for c in store.channels() if c.startswith("cell:"))
+    kinds = [(e["kind"], json.loads(e["payload"]).get("status")) for e in store.read(channel)]
+    assert kinds == [("briefing", None), ("death", "error:credits")]
+
+
+def test_C4_import_boundary_cell_modules_import_only_downward():
+    """Isolation proof (ADR-010 consequence 3): no cell-level module imports a
+    level above it. The forbidden set names modules that do not exist yet —
+    the check is armed before they can be written."""
+    import ast
+    from pathlib import Path
+
+    forbidden = {"team", "teams", "org", "orgs", "scheduler", "registry", "planner", "compiler"}
+    src = Path(__file__).resolve().parents[1] / "src" / "soma"
+    for module in src.glob("*.py"):
+        tree = ast.parse(module.read_text())
+        for node in ast.walk(tree):
+            names = []
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                names = [node.module]
+            for name in names:
+                leaf = name.split(".")[-1]
+                assert leaf not in forbidden, f"{module.name} imports {name}: above its level"
+
+
 def test_X4_bundle_and_ledger_survive_any_run(cfg, monkeypatch):
     import sqlite3
 
