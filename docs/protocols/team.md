@@ -11,7 +11,7 @@ A team is the **provider side** of the cell protocol: everything a cell may
 receive (briefing, notifications, invitations, roster and goal answers,
 steering) is something a team emits, and everything a cell emits (progress,
 discoveries, RESOLVED, death) is something a team reads. Nothing here reaches
-inside a cell.
+inside a cell, and nothing here lets a team decide what a member does — it briefs, informs, messages, and provisions; the cell chooses.
 
 ## 0. Terms
 
@@ -79,35 +79,56 @@ inside a cell.
 
 ## 5. STEER
 
-- **ST1.** When the team disagrees with a member's course, it **injects a
-  correction** as an event on the member's channel, delivered at the
-  member's next turn boundary (never mid-step).
-- **ST2.** Steering is bounded: correct once with a reason; if the member
-  does not change course, reassign or end the task (kill order, cell
-  X1). No open-ended argument with a member.
+- **ST1.** When the team disagrees with a member's course, it **sends the
+  member a message** — an event on the member's channel, delivered at
+  the member's next turn boundary (never mid-step).
+- **ST2.** Steering is **unbounded in count**: the team may message a
+  member as many times as it judges useful. Messages are its only lever
+  — it never edits a member's prompt, tools, or board, and never acts
+  inside the member. Ending a task (a kill order, cell X1) remains
+  available as a separate, explicit act.
 
-## 6. BROKER DIALOGUES (provider side of cell D1–D5)
+## 6. CONVERSATIONS (cell-initiated; the team provisions, never directs)
 
-- **BR1.** On a member's `start_dialogue` naming a sibling, the team
-  creates `dialogue:<id>`, widens both members' subscriptions to it, and
-  writes an **invitation** on each member's channel (cell D1).
-- **BR2.** Entering parks both tasks: each task bead becomes
-  blocked-on a dialogue bead; the scheduler stops stepping both task
-  engines (cell D2).
-- **BR3.** The team **alternates turns** by ticking each participant in
-  order; it composes nothing itself.
-- **BR4.** The team enforces the terminal conditions: an explicit
-  RESOLVED, the turn cap, or the LOCAL circularity judge (cell D4).
-- **BR5.** On termination the team has LOCAL write a **summary**, closes
-  the dialogue bead (unparking both), injects the summary — never the
-  transcript — into both task logs, and tears the channel down (cell D5).
+- **BR1.** Conversations between members are **initiated by the members
+  themselves** (cell D1: `start_dialogue` naming a sibling learned from
+  the roster). The team never initiates, pairs, or directs a
+  conversation between its members. Whether to talk, to whom, and
+  about what is the cell's choice.
+- **BR2.** On a member's request the team **provisions** the
+  conversation: creates `dialogue:<id>`, widens both members'
+  subscriptions to it, and delivers the invitation on the invitee's
+  channel. Accepting is the invitee's choice (cell side).
+- **BR3.** The team composes nothing and referees nothing about
+  content. The exchange is back-and-forth for as long as the
+  participants keep talking; the scheduler alternates their turns as a
+  mechanical service, not a judgment.
+- **BR4.** Parking (each participant's task bead blocked-on the dialogue
+  bead, cell D2) is bookkeeping so a cell is never stepped in two
+  activities at once — not a control.
+- **BR5.** A conversation ends when a participant sends RESOLVED (cell
+  D4). The safety cap and the circularity judge are harness safety
+  nets against runaway loops — bounds on the worst case, grounded in
+  dialogue-length data (PR-18b) — not team decisions about content.
+- **BR6.** On termination the team runs the teardown: LOCAL writes a
+  summary, the dialogue bead closes (unparking both), the summary —
+  never the transcript — is injected into both task logs, and the
+  channel is torn down (cell D5).
 
-## 7. PROVIDE (provider side of cell C6–C8)
+## 7. PROVIDE (provider side of cell C6–C8 — how cells find each other)
 
-- **PV1.** The team answers `team_roster` with member identities,
-  archetypes, and availability — nothing more (cell C6).
-- **PV2.** The team answers `team_goal` with its current goal (cell C7).
-- **PV3.** Answers exist only while the member is engaged in an
+- **PV1.** The team exposes a **roster** members can query: each
+  member's identity, archetype/role, a one-line description of what
+  that role is for, and availability — nothing more (cell C6). This is
+  how a cell discovers whom to ask.
+- **PV2.** The team exposes its **current goal** to members (cell C7).
+- **PV3.** The team exposes a way for a member to **address a message
+  or question to a specific sibling** — the entry point that becomes a
+  conversation (BR1) — without the team choosing the pairing.
+- **PV4.** Transport is the team's implementation choice — SDK tools
+  today; an MCP server exposing roster/goal/message is an equally valid
+  carrier — the contract is what is exposed, not how.
+- **PV5.** Answers exist only while the member is engaged in an
   activity; a cell with no team gets honest empty answers (cell C8).
 
 ## 8. LOG LIFECYCLE
@@ -151,9 +172,9 @@ RESOLVED) on cue, no models — and asserts by rule:
 | shared-board writes serialized through the harness | AS2 |
 | progress read from journal + channels only; no bundle reads during life | OB1 TM3 |
 | discovered-from bead is routed by the team | OB2 |
-| correction delivered at the member's next turn boundary, once | ST1 ST2 |
-| dialogue: invite → park → alternate → RESOLVED/cap → summary → teardown | BR1–BR5 |
-| roster/goal answers opaque; solo member gets empty answers | PV1–PV3 |
+| corrections delivered at the member's next turn boundary; count unbounded; never acts inside the member | ST1 ST2 |
+| conversation: member-initiated; team provisions on request, never initiates or pairs; back-and-forth until RESOLVED; teardown | BR1–BR6 |
+| roster with roles + direct addressing exposed; opaque beyond that; solo member gets empty answers | PV1–PV5 |
 | two-gate completion: epic closed AND judge_goal pass → output log | CP1 CP2 |
 | team behind the cell contract: briefing in, result out, indistinguishable | RC1 |
 | import boundary: team modules import only downward | TM4 |
